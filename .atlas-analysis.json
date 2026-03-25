@@ -1,0 +1,88 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Stake Engine TypeScript Client",
+  "projectDescription": "A TypeScript SDK for integrating casino game clients with the Stake Engine Remote Game Server (RGS) API, handling authentication, game rounds, balance tracking, and currency formatting.",
+  "theme": "luma",
+  "primaryColor": "#75a4dc",
+  "lightColor": "#202f40",
+  "darkColor": "#bec6d1",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/client-lifecycle",
+              "concepts/balance-management",
+              "concepts/events",
+              "concepts/jurisdiction-flags"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/react-integration",
+              "guides/svelte-integration",
+              "guides/currencies",
+              "guides/error-handling"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Client",
+            "pages": [
+              "api/rgs-client",
+              "api/authenticate",
+              "api/play",
+              "api/end-round",
+              "api/event"
+            ]
+          },
+          {
+            "group": "Helpers & Types",
+            "pages": [
+              "api/helpers",
+              "api/types"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Session-based authentication with the Stake Engine RGS API",
+    "Game round lifecycle management (Play and EndRound)",
+    "Real-time balance tracking via window event emitters",
+    "Automatic idle balance refresh every 60 seconds",
+    "Jurisdiction compliance flags for feature gating",
+    "Bet level enforcement with configurable override",
+    "Multi-currency display formatting with 35+ supported currencies",
+    "TypeScript-first with full type definitions"
+  ],
+  "publicApiSurface": [
+    "RGSClient(options) — factory function to create a client instance",
+    "client.Authenticate() — authenticate session and retrieve config/balance",
+    "client.Play(params) — place a bet and receive round result",
+    "client.EndRound() — complete an active round",
+    "client.Event(eventValue) — send a custom game event",
+    "DisplayAmount(balance, options) — format a balance with currency symbol",
+    "ParseAmount(val) — convert RGS internal amount to decimal",
+    "parseBalance(balance) — parse raw API balance to typed Balance object",
+    "API_MULTIPLIER — constant (1,000,000) for amount conversion",
+    "window event: balanceUpdate — emitted on every balance change",
+    "window event: roundActive — emitted on round state changes"
+  ]
+}

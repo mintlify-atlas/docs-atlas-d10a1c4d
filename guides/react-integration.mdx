@@ -1,0 +1,321 @@
+---
+title: "React Integration"
+description: "Integrate the Stake Engine TypeScript client into a React game frontend."
+---
+
+This guide walks you through integrating the Stake Engine client into a React application — from installation through authentication, balance display, and the play/end-round cycle.
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install stake-engine
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add stake-engine
+    ```
+  </Tab>
+</Tabs>
+
+## Creating the client
+
+Create the `RGSClient` instance once — outside a component or in a `useRef` — not inside component state. The client is a singleton for the session and should not be recreated on every render.
+
+<Tip>
+  Store the client in a `useRef` or at module level. Creating it inside `useState` or directly in the component body will reinstantiate it on every render and discard accumulated session state.
+</Tip>
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+// Module-level: single instance shared across the app
+const client = RGSClient({
+  url: window.location.href,
+});
+```
+
+Or using `useRef` when the client belongs to a single component tree:
+
+```typescript
+import { useRef } from 'react';
+import { RGSClient } from 'stake-engine';
+
+function Game() {
+  const clientRef = useRef(
+    RGSClient({ url: window.location.href })
+  );
+
+  const client = clientRef.current;
+  // ...
+}
+```
+
+## Authenticating on mount
+
+Call `Authenticate()` inside a `useEffect` with an empty dependency array so it runs once after the component mounts. The response contains the player's balance, bet configuration, and jurisdiction flags.
+
+```typescript
+import { useEffect, useState } from 'react';
+import { RGSClient } from 'stake-engine';
+import type { AuthenticateResponse } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+
+function Game() {
+  const [authData, setAuthData] = useState<AuthenticateResponse | null>(null);
+
+  useEffect(() => {
+    async function init() {
+      try {
+        const response = await client.Authenticate();
+        setAuthData(response);
+      } catch (err) {
+        console.error('Authentication failed:', err);
+      }
+    }
+
+    init();
+  }, []);
+
+  if (!authData) {
+    return <p>Authenticating...</p>;
+  }
+
+  return <GameUI config={authData.config} flags={authData.jurisdictionFlags} />;
+}
+```
+
+## Subscribing to balance updates
+
+The client emits a `balanceUpdate` event on `window` every time the balance changes — after `Authenticate`, `Play`, `EndRound`, and on the periodic background refresh. Subscribe with `window.addEventListener` and clean up in the `useEffect` return function.
+
+```typescript
+import React, { useEffect, useState } from 'react';
+
+type Balance = {
+  amount: number;
+  currency: string;
+};
+
+const BalanceDisplay: React.FC = () => {
+  const [balance, setBalance] = useState<Balance | null>(null);
+
+  useEffect(() => {
+    const handleBalanceUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent<Balance>;
+      setBalance(customEvent.detail);
+    };
+
+    window.addEventListener('balanceUpdate', handleBalanceUpdate);
+
+    return () => {
+      window.removeEventListener('balanceUpdate', handleBalanceUpdate);
+    };
+  }, []);
+
+  if (!balance) {
+    return <p className="text-gray-500">Waiting for balance update...</p>;
+  }
+
+  return (
+    <div className="p-4 rounded-2xl shadow bg-white">
+      <h2 className="text-lg font-semibold">Current Balance</h2>
+      <p className="text-xl font-bold">
+        {balance.amount} {balance.currency}
+      </p>
+    </div>
+  );
+};
+
+export default BalanceDisplay;
+```
+
+<Warning>
+  Always return a cleanup function from `useEffect` that calls `window.removeEventListener`. Without it, the listener persists after the component unmounts, causing memory leaks and stale state updates.
+</Warning>
+
+For formatted display, use the `DisplayAmount` helper instead of rendering raw `balance.amount`:
+
+```typescript
+import { DisplayAmount } from 'stake-engine';
+
+// Inside the component:
+<p className="text-xl font-bold">
+  {DisplayAmount(balance)}
+</p>
+```
+
+## Managing the play/end-round cycle
+
+Call `Play()` from a button handler and `EndRound()` when the round completes. Disable the spin button while a round is active by subscribing to the `roundActive` event.
+
+```typescript
+import React, { useEffect, useRef, useState } from 'react';
+import { RGSClient } from 'stake-engine';
+import type { PlayResponse } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+
+const SpinButton: React.FC = () => {
+  const [roundActive, setRoundActive] = useState(false);
+  const [lastResult, setLastResult] = useState<PlayResponse | null>(null);
+
+  // Track round active state from the client
+  useEffect(() => {
+    const handleRoundActive = (event: Event) => {
+      const customEvent = event as CustomEvent<{ active: boolean }>;
+      setRoundActive(customEvent.detail.active);
+    };
+
+    window.addEventListener('roundActive', handleRoundActive);
+    return () => window.removeEventListener('roundActive', handleRoundActive);
+  }, []);
+
+  const handleSpin = async () => {
+    try {
+      // amount must be an API-encoded value (e.g. 1_000_000 = $1.00)
+      const result = await client.Play({ amount: 1_000_000, mode: 'normal' });
+      setLastResult(result);
+
+      // If the round is still active (e.g. a feature triggered), call EndRound
+      if (result.round.active) {
+        await client.EndRound();
+      }
+    } catch (err) {
+      console.error('Play error:', err);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleSpin}
+      disabled={roundActive}
+      className="px-6 py-3 bg-blue-600 text-white rounded-xl disabled:opacity-50"
+    >
+      {roundActive ? 'Spinning...' : 'Spin'}
+    </button>
+  );
+};
+
+export default SpinButton;
+```
+
+## Checking jurisdiction flags before rendering features
+
+After authentication, `client.jurisdictionFlags` tells you which features are disabled for the player's jurisdiction. Check these flags before rendering feature buttons.
+
+<Tip>
+  Read `jurisdictionFlags` from the `Authenticate()` response — it is available as soon as authentication completes. Do not render feature buttons before authentication finishes.
+</Tip>
+
+```typescript
+import { useEffect, useState } from 'react';
+import { RGSClient } from 'stake-engine';
+import type { JurisdictionFlags } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+
+function GameControls() {
+  const [flags, setFlags] = useState<JurisdictionFlags | null>(null);
+
+  useEffect(() => {
+    client.Authenticate().then((res) => setFlags(res.jurisdictionFlags));
+  }, []);
+
+  if (!flags) return null;
+
+  return (
+    <div>
+      {!flags.disabledAutoplay && (
+        <button>Autoplay</button>
+      )}
+      {!flags.disabledBuyFeature && (
+        <button>Buy Feature</button>
+      )}
+      {!flags.disabledTurbo && (
+        <button>Turbo</button>
+      )}
+    </div>
+  );
+}
+```
+
+## Complete example
+
+The following puts all of the above together in a single self-contained game component.
+
+```typescript
+import React, { useEffect, useRef, useState } from 'react';
+import { RGSClient, DisplayAmount } from 'stake-engine';
+import type { AuthenticateResponse, Balance } from 'stake-engine';
+
+// Create once at module level — not inside the component
+const client = RGSClient({ url: window.location.href });
+
+export default function Game() {
+  const [authData, setAuthData] = useState<AuthenticateResponse | null>(null);
+  const [balance, setBalance] = useState<Balance | null>(null);
+  const [roundActive, setRoundActive] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Authenticate once on mount
+  useEffect(() => {
+    client
+      .Authenticate()
+      .then(setAuthData)
+      .catch((err) => setError(err.message));
+  }, []);
+
+  // Subscribe to balance updates
+  useEffect(() => {
+    const onBalance = (e: Event) => {
+      setBalance((e as CustomEvent<Balance>).detail);
+    };
+    window.addEventListener('balanceUpdate', onBalance);
+    return () => window.removeEventListener('balanceUpdate', onBalance);
+  }, []);
+
+  // Subscribe to round active state
+  useEffect(() => {
+    const onRound = (e: Event) => {
+      setRoundActive((e as CustomEvent<{ active: boolean }>).detail.active);
+    };
+    window.addEventListener('roundActive', onRound);
+    return () => window.removeEventListener('roundActive', onRound);
+  }, []);
+
+  const handleSpin = async () => {
+    if (!authData) return;
+    setError(null);
+    try {
+      const result = await client.Play({
+        amount: authData.config.defaultBetLevel,
+        mode: 'normal',
+      });
+      if (result.round.active) {
+        await client.EndRound();
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
+
+  if (!authData) return <p>Authenticating...</p>;
+
+  return (
+    <div>
+      {balance && <p>Balance: {DisplayAmount(balance)}</p>}
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <button onClick={handleSpin} disabled={roundActive}>
+        {roundActive ? 'Spinning...' : 'Spin'}
+      </button>
+      {!authData.jurisdictionFlags.disabledAutoplay && (
+        <button disabled={roundActive}>Autoplay</button>
+      )}
+    </div>
+  );
+}
+```

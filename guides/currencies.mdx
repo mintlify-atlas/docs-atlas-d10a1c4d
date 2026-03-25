@@ -1,0 +1,169 @@
+---
+title: "Currencies & Amounts"
+description: "How the Stake Engine client handles multi-currency amounts, formatting, and display."
+---
+
+The Stake Engine API represents all monetary amounts as integers scaled by a fixed multiplier. This page explains the encoding, the helper functions for parsing and displaying amounts, and the full list of supported currencies.
+
+## Amount encoding
+
+All amounts from the API are integers. The client uses a fixed multiplier of **1,000,000** to encode decimal values as integers.
+
+| API value | Decimal value |
+|----------:|---------------|
+| `1000000` | `1.00` |
+| `500000` | `0.50` |
+| `10000000` | `10.00` |
+| `100` | `0.0001` |
+
+Use `ParseAmount` to convert an API integer to a JavaScript `number`:
+
+```typescript
+import { ParseAmount } from 'stake-engine';
+
+// Convert API integer to decimal
+ParseAmount(1_000_000); // => 1
+ParseAmount(1_500_000); // => 1.5
+
+// Convert a decimal bet to an API-encoded amount
+const betAmount = 2.50 * 1_000_000; // => 2_500_000
+```
+
+`ParseAmount` simply divides by `1,000,000`:
+
+```typescript
+const ParseAmount = (val: number): number => {
+  return val / 1_000_000;
+};
+```
+
+<Note>
+  When passing amounts to `Play()`, provide the API-encoded integer directly (e.g. `1_000_000` for $1.00), not the decimal value. Bet levels returned by `Authenticate()` are already API-encoded.
+</Note>
+
+## DisplayAmount
+
+`DisplayAmount` formats a `Balance` object into a human-readable string with currency symbol, correct decimal precision, and locale-aware number formatting.
+
+```typescript
+import { DisplayAmount } from 'stake-engine';
+import type { Balance } from 'stake-engine';
+
+const balance: Balance = { amount: 10_500_000, currency: 'USD' };
+
+DisplayAmount(balance);                                   // => "$10.50"
+DisplayAmount(balance, { removeSymbol: true });           // => "10.50"
+DisplayAmount(balance, { decimals: 4 });                  // => "$10.5000"
+DisplayAmount(balance, { trimDecimalForIntegers: true }); // => "$10.50" (no change — not a whole number)
+
+const wholeBalance: Balance = { amount: 5_000_000, currency: 'USD' };
+DisplayAmount(wholeBalance, { trimDecimalForIntegers: true }); // => "$5"
+```
+
+### Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `removeSymbol` | `boolean` | Removes the currency symbol from the output. Useful for inputs or numeric-only displays. |
+| `decimals` | `number` | Forces a specific number of decimal places, overriding the currency default. |
+| `trimDecimalForIntegers` | `boolean` | When the amount is a whole number, removes the decimal portion entirely (e.g. `$2.00` → `$2`). Useful for displaying bet levels. |
+
+All options are optional. When omitted, the currency's default decimal precision is used.
+
+### Symbol placement
+
+Some currencies place the symbol after the number. `DisplayAmount` handles this automatically:
+
+```typescript
+const dkk: Balance = { amount: 10_000_000, currency: 'DKK' };
+DisplayAmount(dkk); // => "10.00 KR"
+
+const usd: Balance = { amount: 10_000_000, currency: 'USD' };
+DisplayAmount(usd); // => "$10.00"
+```
+
+## Currency reference
+
+The following table lists all 35 supported currencies. The **Decimals** column shows the default number of decimal places used by `DisplayAmount`. The **Symbol after** column indicates whether the symbol is placed after the number.
+
+| Code | Currency | Symbol | Decimals | Symbol after | Example |
+|------|----------|--------|:--------:|:------------:|---------|
+| USD | United States Dollar | $ | 2 | | $10.00 |
+| CAD | Canadian Dollar | CA$ | 2 | | CA$10.00 |
+| JPY | Japanese Yen | ¥ | 0 | | ¥10 |
+| EUR | Euro | € | 2 | | €10.00 |
+| RUB | Russian Ruble | ₽ | 2 | | ₽10.00 |
+| CNY | Chinese Yuan | CN¥ | 2 | | CN¥10.00 |
+| PHP | Philippine Peso | ₱ | 2 | | ₱10.00 |
+| INR | Indian Rupee | ₹ | 2 | | ₹10.00 |
+| IDR | Indonesian Rupiah | Rp | 0 | | Rp10 |
+| KRW | South Korean Won | ₩ | 0 | | ₩10 |
+| BRL | Brazilian Real | R$ | 2 | | R$10.00 |
+| MXN | Mexican Peso | MX$ | 2 | | MX$10.00 |
+| DKK | Danish Krone | KR | 2 | ✓ | 10.00 KR |
+| PLN | Polish Złoty | zł | 2 | ✓ | 10.00 zł |
+| VND | Vietnamese Đồng | ₫ | 0 | ✓ | 10 ₫ |
+| TRY | Turkish Lira | ₺ | 2 | | ₺10.00 |
+| CLP | Chilean Peso | CLP | 0 | ✓ | 10 CLP |
+| ARS | Argentine Peso | ARS | 2 | ✓ | 10.00 ARS |
+| PEN | Peruvian Sol | S/ | 2 | ✓ | 10.00 S/ |
+| NGN | Nigerian Naira | ₦ | 0 | | ₦10 |
+| SAR | Saudi Arabia Riyal | SAR | 2 | ✓ | 10.00 SAR |
+| ILS | Israeli Shekel | ILS | 2 | ✓ | 10.00 ILS |
+| AED | UAE Dirham | AED | 2 | ✓ | 10.00 AED |
+| TWD | Taiwan New Dollar | NT$ | 2 | | NT$10.00 |
+| NOK | Norwegian Krone | kr | 2 | | kr10.00 |
+| KWD | Kuwaiti Dinar | KD | 2 | | KD10.00 |
+| JOD | Jordanian Dinar | JD | 2 | | JD10.00 |
+| CRC | Costa Rican Colón | ₡ | 2 | | ₡10.00 |
+| TND | Tunisian Dinar | TND | 2 | ✓ | 10.00 TND |
+| SGD | Singapore Dollar | SG$ | 2 | | SG$10.00 |
+| MYR | Malaysian Ringgit | RM | 2 | | RM10.00 |
+| OMR | Omani Rial | OMR | 2 | ✓ | 10.00 OMR |
+| QAR | Qatari Riyal | QAR | 2 | ✓ | 10.00 QAR |
+| BHD | Bahraini Dinar | BD | 2 | | BD10.00 |
+| XGC | Stake US Gold Coin | GC | 0 | ✓ | 10 GC |
+| XSC | Stake US Stake Cash | SC | 2 | ✓ | 10.00 SC |
+
+## Special currencies: XGC and XSC
+
+Two currencies are specific to the Stake US social casino jurisdiction.
+
+**XGC — Gold Coin** (`symbol: GC`, `decimals: 0`)
+
+Gold Coins are the primary play currency in the Stake US social casino. They are whole numbers — `DisplayAmount` shows no decimal places by default.
+
+```typescript
+const gc: Balance = { amount: 5_000_000, currency: 'XGC' };
+DisplayAmount(gc); // => "5 GC"
+```
+
+**XSC — Stake Cash** (`symbol: SC`, `decimals: 2`)
+
+Stake Cash is the redeemable currency in the Stake US social casino. It uses 2 decimal places.
+
+```typescript
+const sc: Balance = { amount: 2_500_000, currency: 'XSC' };
+DisplayAmount(sc); // => "2.50 SC"
+```
+
+<Note>
+  When `client.jurisdictionFlags.socialCasino` is `true`, the player is in the Stake US social casino context and will have XGC or XSC balances. Check this flag before displaying any real-money UI elements.
+</Note>
+
+## Displaying bet levels
+
+Bet levels returned by `Authenticate()` are API-encoded integers. Use `trimDecimalForIntegers` to display clean whole-number bets without trailing `.00`.
+
+```typescript
+import { DisplayAmount, ParseAmount } from 'stake-engine';
+import type { Balance } from 'stake-engine';
+
+// authData.config.betLevels = [500000, 1000000, 2500000, 5000000]
+
+authData.config.betLevels.map((level) => {
+  const display: Balance = { amount: level, currency: authData.balance.currency };
+  return DisplayAmount(display, { trimDecimalForIntegers: true });
+});
+// => ["$0.50", "$1", "$2.50", "$5"]
+```

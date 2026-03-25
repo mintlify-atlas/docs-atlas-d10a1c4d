@@ -1,80 +1,243 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Install the Stake Engine TypeScript client and integrate it into your casino game frontend."
 ---
 
-## Get started in three steps
+## Installation
 
-Get your documentation site running locally and make your first customization.
+Install the `stake-engine` package with your preferred package manager.
 
-### Step 1: Set up your local environment
+<CodeGroup>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+```bash npm
+npm install stake-engine
+```
 
-### Step 2: Deploy your changes
+```bash yarn
+yarn add stake-engine
+```
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+```bash pnpm
+pnpm add stake-engine
+```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+</CodeGroup>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+## URL parameters
 
-### Step 3: Go live
+`RGSClient` reads its configuration directly from `window.location.href`. The operator launches your game in an iframe or browser window with the required parameters in the query string.
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+| Parameter  | Required | Default     | Description                                                                 |
+| ---------- | -------- | ----------- | --------------------------------------------------------------------------- |
+| `sessionID`| Yes      | —           | Unique identifier for the player's session. Used by every API request.      |
+| `rgs_url`  | Yes      | —           | Base hostname for the RGS API (e.g. `rgs.stake-engine.com`). Protocol is added by the client. |
+| `lang`     | No       | `en`        | ISO 639-1 language code passed by the operator (e.g. `en`, `fr`, `ja`).    |
+| `device`   | No       | `desktop`   | `desktop` or `mobile`. Use for responsive layout decisions.                 |
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  The client throws an error at construction time if `sessionID` or `rgs_url` are missing, or if `device` is set to an unsupported value.
+</Note>
+
+A valid launch URL looks like:
+
+```
+https://your-game.example.com/?sessionID=abc123&rgs_url=rgs.stake-engine.com&lang=en&device=desktop
+```
+
+## Game integration
+
+Follow these steps to wire the client into your game loop.
+
+<Steps>
+
+<Step title="Initialize the client">
+
+Pass `window.location.href` to `RGSClient`. The factory parses all URL parameters and returns a typed `Client` object.
+
+```typescript
+import { RGSClient, DisplayAmount } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+```
+
+Two optional constructor options are available:
+
+```typescript
+const client = RGSClient({
+  url: window.location.href,
+  enforceBetLevels: true,   // default true — rejects amounts not in betLevels
+  protocol: 'https',        // default 'https'
+});
+```
+
+<Tip>
+  Set `enforceBetLevels: false` only when you need to send custom bet amounts that fall outside the configured bet levels.
+</Tip>
+
+</Step>
+
+<Step title="Authenticate the session">
+
+Call `Authenticate()` once when your game loads. It authorises the session and returns the player's balance, betting configuration, and jurisdiction feature flags.
+
+```typescript
+const { balance, config, jurisdictionFlags } = await client.Authenticate();
+
+console.log('Balance:', DisplayAmount(balance));
+// e.g. "$10.00"
+
+console.log('Bet levels:', config.betLevels);
+// e.g. [1000000, 2000000, 5000000, 10000000]
+```
+
+<Note>
+  All monetary amounts are integers scaled by `1,000,000`. A value of `1000000` represents 1.00 in the player's currency. Use `DisplayAmount` to format them for display.
+</Note>
+
+The `config` object returned by `Authenticate()` contains:
+
+| Field            | Type       | Description                                                |
+| ---------------- | ---------- | ---------------------------------------------------------- |
+| `betLevels`      | `number[]` | Allowed bet amounts in integer form.                       |
+| `defaultBetLevel`| `number`   | The pre-selected bet level for the session.                |
+| `minBet`         | `number`   | Minimum permitted bet amount.                             |
+| `maxBet`         | `number`   | Maximum permitted bet amount.                             |
+| `stepBet`        | `number`   | Bet amounts must be a multiple of this value.             |
+
+Use `jurisdictionFlags` to conditionally enable or disable game features such as autoplay, turbo spin, or buy feature.
+
+</Step>
+
+<Step title="Subscribe to balance and round events">
+
+The client emits `balanceUpdate` and `roundActive` events on the `window` object whenever a balance changes or a round state changes. Subscribe to these events to keep your UI in sync without polling.
+
+```typescript
+// Fired on Authenticate(), Play(), EndRound(), and the periodic balance refresh
+window.addEventListener('balanceUpdate', (event: Event) => {
+  const customEvent = event as CustomEvent<{ amount: number; currency: string }>;
+  console.log('New balance:', DisplayAmount(customEvent.detail));
+});
+
+// Fired when a round starts or ends — use this to enable/disable the spin button
+window.addEventListener('roundActive', (event: Event) => {
+  const customEvent = event as CustomEvent<{ active: boolean }>;
+  const spinButton = document.getElementById('spin-btn');
+  if (spinButton) {
+    spinButton.toggleAttribute('disabled', customEvent.detail.active);
+  }
+});
+```
+
+<Tip>
+  When a player is idle, the client automatically refreshes the balance every 60 seconds and emits a `balanceUpdate` event. You do not need to poll manually.
+</Tip>
+
+</Step>
+
+<Step title="Play a round">
+
+Call `Play()` to place a bet. Pass an `amount` from `config.betLevels` and a `mode` string that identifies the game mode (e.g. `'base'`, `'freespin'`).
+
+```typescript
+const result = await client.Play({
+  amount: config.betLevels[0], // must be a valid bet level
+  mode: 'base',
+});
+
+console.log('Round active:', result.round.active);
+console.log('Updated balance:', DisplayAmount(result.balance));
+```
+
+The `round` object in the response describes the outcome:
+
+| Field              | Type      | Description                                                         |
+| ------------------ | --------- | ------------------------------------------------------------------- |
+| `betID`            | `number`  | Unique identifier for this bet.                                    |
+| `active`           | `boolean` | `true` if the round requires `EndRound()` to close.               |
+| `mode`             | `string`  | The mode passed to `Play()`.                                       |
+| `amount`           | `number`  | Bet amount in integer form.                                        |
+| `payout`           | `number`  | Payout amount in integer form.                                     |
+| `payoutMultiplier` | `number`  | Multiplier applied to the bet amount.                              |
+| `state`            | `unknown` | Game-specific state data (shape defined per game).                 |
+
+<Warning>
+  Calling `Play()` while a round is already active throws an error. Always check `result.round.active` and call `EndRound()` before starting a new round.
+</Warning>
+
+</Step>
+
+<Step title="End the round">
+
+If `result.round.active` is `true` after `Play()`, call `EndRound()` to finalise the round and unlock the next bet.
+
+```typescript
+if (result.round.active) {
+  const endResult = await client.EndRound();
+  console.log('Final balance:', DisplayAmount(endResult.balance));
+}
+```
+
+</Step>
+
+</Steps>
+
+## Complete example
+
+```typescript
+import { RGSClient, DisplayAmount } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+
+// Step 1: Authenticate
+const { balance, config, jurisdictionFlags } = await client.Authenticate();
+console.log('Balance:', DisplayAmount(balance));
+
+// Step 2: Listen for balance updates
+window.addEventListener('balanceUpdate', (event: Event) => {
+  const customEvent = event as CustomEvent<{ amount: number; currency: string }>;
+  console.log('New balance:', customEvent.detail);
+});
+
+// Step 3: Play a round
+const result = await client.Play({
+  amount: config.betLevels[0], // must be a valid bet level
+  mode: 'base',
+});
+
+// Step 4: End the round (if still active)
+if (result.round.active) {
+  await client.EndRound();
+}
+```
+
+## Formatting amounts
+
+`DisplayAmount` converts a `Balance` object to a localised, currency-formatted string. It uses `navigator.language` for locale and the correct symbol placement for each supported currency.
+
+```typescript
+import { DisplayAmount, ParseAmount } from 'stake-engine';
+
+// Format for display — symbol included by default
+DisplayAmount({ amount: 10_000_000, currency: 'USD' });
+// → "$10.00"
+
+// Remove the currency symbol
+DisplayAmount({ amount: 10_000_000, currency: 'USD' }, { removeSymbol: true });
+// → "10.00"
+
+// Strip decimals from whole numbers (useful for bet level selectors)
+DisplayAmount({ amount: 10_000_000, currency: 'USD' }, { trimDecimalForIntegers: true });
+// → "$10"
+
+// Convert the raw integer to a decimal number without formatting
+ParseAmount(10_000_000);
+// → 10
+
+// Build a raw amount from a decimal value (1,000,000 = 1 currency unit)
+const betAmount = 5 * 1_000_000; // 5_000_000 → $5.00
+```
+
+<Note>
+  The RGS API uses a fixed multiplier of `1,000,000`. All amounts received from and sent to the API are integers in this scale. Never send raw decimal values to `Play()`.
 </Note>

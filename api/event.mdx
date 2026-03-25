@@ -1,0 +1,50 @@
+---
+title: "Event"
+description: "Sends a custom game event to the RGS API."
+---
+
+## Signature
+
+```typescript
+client.Event(eventValue: string): Promise<EventResponse>
+```
+
+`Event` POSTs `{ sessionID, event }` to `/bet/event` and returns the event string echoed by the server. Use it to notify the RGS of game-specific occurrences such as bonus triggers, feature activations, or other state transitions that the server needs to record.
+
+<Warning>
+  `Authenticate()` must be called before `Event()`. Calling `Event()` on an unauthenticated client throws immediately.
+</Warning>
+
+## Parameters
+
+<ParamField body="eventValue" type="string" required>
+  The event string to send to the RGS. The accepted values and their meanings are defined by the game server (e.g. `'bonus_triggered'`, `'freespin_start'`).
+</ParamField>
+
+## Returns
+
+<ResponseField name="event" type="string" required>
+  The event string echoed back by the RGS API, confirming the event was received.
+</ResponseField>
+
+## Throws
+
+- Throws an `Error` with `'Client is not authenticated, please call Authenticate()'` if `Authenticate()` has not been called.
+- Throws an `Error` if the RGS API returns a non-2xx HTTP status.
+
+## Example
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+await client.Authenticate();
+
+// Notify the server that the player triggered the bonus feature.
+const { event } = await client.Event('bonus_triggered');
+console.log('Event confirmed:', event); // 'bonus_triggered'
+```
+
+<Note>
+  `Event()` does not affect the player's balance or the `roundActive` state. It is a fire-and-confirm notification mechanism only.
+</Note>

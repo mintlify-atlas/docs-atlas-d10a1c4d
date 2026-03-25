@@ -1,0 +1,95 @@
+---
+title: "Introduction"
+description: "TypeScript client for integrating casino game clients with the Stake Engine RGS API."
+---
+
+## What is Stake Engine?
+
+Stake Engine is a Remote Game Server (RGS) platform for casino game development. The `stake-engine` TypeScript client gives your game frontend a type-safe interface to authenticate players, manage game rounds, track balances, and send game events — all through a single factory function.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install the SDK and run your first authenticated session in minutes.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/rgs-client">
+    Full reference for every method, parameter, and return type.
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/concepts/client-lifecycle">
+    Understand the client lifecycle, balance management, and events.
+  </Card>
+  <Card title="Framework Guides" icon="puzzle-piece" href="/guides/react-integration">
+    Integration examples for React and Svelte.
+  </Card>
+</CardGroup>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Session authentication" icon="key">
+    Authenticate players via session ID, receiving balance, config, and jurisdiction flags in one call.
+  </Card>
+  <Card title="Round lifecycle management" icon="rotate">
+    Manage the full Play → EndRound cycle with built-in state guards to prevent double-bets.
+  </Card>
+  <Card title="Real-time balance events" icon="bolt">
+    Subscribe to `balanceUpdate` and `roundActive` window events for reactive UI updates.
+  </Card>
+  <Card title="Jurisdiction compliance" icon="shield">
+    Receive per-jurisdiction feature flags to gate autoplay, turbo, buy feature, and more.
+  </Card>
+  <Card title="Multi-currency formatting" icon="coins">
+    Format amounts in 35+ currencies with correct symbol placement and decimal precision.
+  </Card>
+  <Card title="TypeScript-first" icon="brackets-curly">
+    Full type definitions for all parameters, responses, and config objects.
+  </Card>
+</CardGroup>
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install stake-engine
+```
+
+```bash yarn
+yarn add stake-engine
+```
+
+```bash pnpm
+pnpm add stake-engine
+```
+
+</CodeGroup>
+
+## Minimum example
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+
+// Authenticate the session
+const { balance, config, jurisdictionFlags } = await client.Authenticate();
+
+// Place a bet
+const result = await client.Play({ amount: config.betLevels[0], mode: 'base' });
+
+// Complete the round
+await client.EndRound();
+```
+
+<Note>
+  All amounts in the Stake Engine API are integers scaled by `1,000,000`. Use `ParseAmount` and `DisplayAmount` to convert and format them for display. See the [Helpers reference](/api/helpers) for details.
+</Note>
+
+## Beta status
+
+The SDK is currently in **BETA**. APIs may change between minor versions. Pin your dependency to a specific version if you need stability.
+
+## Contributing
+
+- Report bugs or request features via [GitHub Issues](https://github.com/StakeEngine/ts-client/issues)
+- Join the conversation on Discord
+- Submit documentation improvements via Pull Request

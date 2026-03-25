@@ -1,0 +1,128 @@
+---
+title: "Window Events"
+description: "Subscribe to real-time balance and round state changes using the browser event system."
+---
+
+The Stake Engine client dispatches `CustomEvent`s on the `window` object whenever the balance changes or a round starts or ends. Any component anywhere on the page can react to these changes without polling or prop-drilling.
+
+## Overview
+
+Two events are dispatched:
+
+| Event name      | When fired                                                       | Payload type                      |
+| --------------- | ---------------------------------------------------------------- | --------------------------------- |
+| `balanceUpdate` | After `Authenticate`, `Play`, `EndRound`, or idle refresh        | `Balance` (`{ amount, currency }`)|
+| `roundActive`   | When a round starts (`Play`) or ends (`EndRound` / Play error)   | `{ active: boolean }`             |
+
+Because these are native browser `CustomEvent`s, they work with any framework — or no framework at all.
+
+## balanceUpdate event
+
+Emitted whenever `client.balance` is updated. The event `detail` is a `Balance` object.
+
+```typescript
+import type { Balance } from 'stake-engine';
+
+window.addEventListener('balanceUpdate', (e) => {
+  const event = e as CustomEvent<Balance>;
+  const { amount, currency } = event.detail;
+  console.log(`Balance: ${amount}, Currency: ${currency}`);
+});
+```
+
+## roundActive event
+
+Emitted when a round transitions between active and inactive states. The event `detail` contains a single `active` boolean.
+
+```typescript
+window.addEventListener('roundActive', (e) => {
+  const event = e as CustomEvent<{ active: boolean }>;
+  if (event.detail.active) {
+    // Disable the spin button, show animation
+  } else {
+    // Re-enable the spin button
+  }
+});
+```
+
+## Framework integration examples
+
+<Tabs>
+  <Tab title="React">
+    Use `useEffect` to register and clean up listeners. The cleanup function returned from `useEffect` runs when the component unmounts.
+
+    ```tsx
+    import { useEffect, useState } from 'react';
+    import type { Balance } from 'stake-engine';
+
+    function BalanceDisplay() {
+      const [balance, setBalance] = useState<Balance | null>(null);
+
+      useEffect(() => {
+        const handleBalance = (e: Event) => {
+          const event = e as CustomEvent<Balance>;
+          setBalance(event.detail);
+        };
+
+        window.addEventListener('balanceUpdate', handleBalance);
+        return () => window.removeEventListener('balanceUpdate', handleBalance);
+      }, []);
+
+      return <span>{balance ? `${balance.amount} ${balance.currency}` : 'Loading...'}</span>;
+    }
+    ```
+
+    For round state:
+
+    ```tsx
+    useEffect(() => {
+      const handleRound = (e: Event) => {
+        const event = e as CustomEvent<{ active: boolean }>;
+        setSpinning(event.detail.active);
+      };
+
+      window.addEventListener('roundActive', handleRound);
+      return () => window.removeEventListener('roundActive', handleRound);
+    }, []);
+    ```
+  </Tab>
+  <Tab title="Svelte">
+    Use `onMount` to register listeners and return a cleanup function. Svelte calls the returned function when the component is destroyed.
+
+    ```svelte
+    <script lang="ts">
+      import { onMount } from 'svelte';
+      import type { Balance } from 'stake-engine';
+
+      let balance: Balance | null = null;
+      let spinning = false;
+
+      onMount(() => {
+        const handleBalance = (e: Event) => {
+          const event = e as CustomEvent<Balance>;
+          balance = event.detail;
+        };
+
+        const handleRound = (e: Event) => {
+          const event = e as CustomEvent<{ active: boolean }>;
+          spinning = event.detail.active;
+        };
+
+        window.addEventListener('balanceUpdate', handleBalance);
+        window.addEventListener('roundActive', handleRound);
+
+        return () => {
+          window.removeEventListener('balanceUpdate', handleBalance);
+          window.removeEventListener('roundActive', handleRound);
+        };
+      });
+    </script>
+
+    <span>{balance ? `${balance.amount} ${balance.currency}` : 'Loading...'}</span>
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Events fire on `window` regardless of whether the component that added the listener is still mounted. Always remove event listeners in your cleanup function to avoid memory leaks and stale state updates.
+</Note>

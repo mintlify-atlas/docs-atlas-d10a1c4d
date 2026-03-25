@@ -1,0 +1,136 @@
+---
+title: "Play"
+description: "Places a bet for the player and returns the updated balance and round state."
+---
+
+## Signature
+
+```typescript
+client.Play(params: PlayParameters): Promise<PlayResponse>
+```
+
+`Play` submits a bet to the RGS `/wallet/play` endpoint and returns the resulting balance and round. Call it whenever the player initiates a spin or equivalent game action.
+
+<Warning>
+  `Authenticate()` must be called before `Play()`. Calling `Play()` on an unauthenticated client throws immediately.
+</Warning>
+
+## Parameters
+
+<ParamField body="amount" type="number" required>
+  Bet amount in RGS units (a whole number where `1,000,000` equals one currency unit). Must satisfy all of the following:
+
+  - Must be an exact multiple of `config.stepBet`.
+  - Must be between `config.minBet` and `config.maxBet` (inclusive).
+  - If `enforceBetLevels` is `true` (the default), must be present in `config.betLevels`.
+</ParamField>
+
+<ParamField body="mode" type="string" required>
+  Game mode string sent to the RGS. Identifies which game phase produced the bet (e.g. `'base'`, `'freespin'`, `'bonus'`).
+</ParamField>
+
+## Validation rules
+
+`Play` performs the following checks in order before sending the request. The first failing check throws an `Error`.
+
+| # | Condition | Error message |
+| --- | --- | --- |
+| 1 | `Authenticate()` has been called | `'Client is not authenticated, please call Authenticate()'` |
+| 2 | No round is currently active | `'A round is already active, please call EndRound() before starting a new round'` |
+| 3 | `amount % stepBet === 0` | `'Bet amount must be a multiple of <stepBet>'` |
+| 4 | `minBet <= amount <= maxBet` | `'Bet amount must between min bet (<minBet>) and max bet (<maxBet>)'` |
+| 5 | `amount` in `betLevels` (when `enforceBetLevels: true`) | `'Bet amount must be one of the following levels: ...'` |
+
+## Returns
+
+<ResponseField name="balance" type="Balance" required>
+  Updated player balance after the bet was placed.
+  <Expandable title="Balance properties">
+    <ResponseField name="amount" type="number" required>
+      Balance amount in RGS units.
+    </ResponseField>
+    <ResponseField name="currency" type="string" required>
+      ISO 4217 currency code.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="round" type="Round" required>
+  The round created by this bet.
+  <Expandable title="Round properties">
+    <ResponseField name="betID" type="number" required>
+      Unique identifier for the bet.
+    </ResponseField>
+    <ResponseField name="amount" type="number">
+      Bet amount in RGS units.
+    </ResponseField>
+    <ResponseField name="payout" type="number">
+      Payout amount in RGS units.
+    </ResponseField>
+    <ResponseField name="payoutMultiplier" type="number">
+      Payout expressed as a multiplier of the bet amount.
+    </ResponseField>
+    <ResponseField name="active" type="boolean" required>
+      `true` if the round is still open and requires `EndRound()` to close. `false` if the round completed in a single request.
+    </ResponseField>
+    <ResponseField name="mode" type="string" required>
+      Game mode string echoed from the request.
+    </ResponseField>
+    <ResponseField name="event" type="string">
+      Optional event string set by the game server.
+    </ResponseField>
+    <ResponseField name="state" type="unknown">
+      Arbitrary game-specific state. Shape is defined by the game server.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Side effects
+
+| Event | Condition |
+| --- | --- |
+| Internal `roundActive` set to `true` | Before the HTTP request is sent. |
+| `window` emits `roundActive` with `{ active: true }` | Before the HTTP request is sent. |
+| `window` emits `balanceUpdate` | After a successful response, with the updated `Balance`. |
+| Internal `roundActive` set to `false` | After response, only when `round.active === false`. |
+| `window` emits `roundActive` with `{ active: false }` | After response, only when `round.active === false`. |
+| Idle balance interval restarted | After every successful response. |
+
+<Note>
+  If `round.active` is `true` in the response, the `roundActive` flag remains set until `EndRound()` is called. Any further `Play()` calls will throw until the round is closed.
+</Note>
+
+## Throws
+
+- Throws synchronously for each of the validation failures listed above.
+- Throws an `Error` if the RGS API returns a non-2xx HTTP status (and resets `roundActive` to `false`).
+
+## Example
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+const { config } = await client.Authenticate();
+
+// Pick a bet amount from the configured levels.
+const betAmount = config.betLevels[config.defaultBetLevel];
+
+try {
+  const { balance, round } = await client.Play({
+    amount: betAmount,
+    mode: 'base',
+  });
+
+  console.log('New balance:', balance.amount);
+  console.log('Payout multiplier:', round.payoutMultiplier);
+
+  // Close the round if the server left it open.
+  if (round.active) {
+    const { balance: finalBalance } = await client.EndRound();
+    console.log('Final balance:', finalBalance.amount);
+  }
+} catch (err) {
+  console.error('Play failed:', err.message);
+}
+```

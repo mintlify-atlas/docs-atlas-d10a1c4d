@@ -1,0 +1,115 @@
+---
+title: "Jurisdiction Flags"
+description: "Using per-jurisdiction feature flags to comply with regional gaming regulations."
+---
+
+When a player authenticates, the RGS returns a set of jurisdiction flags that describe what features are permitted or required in their region. Your game must read these flags and adjust its UI and behavior accordingly.
+
+## How flags are returned
+
+Flags are populated on the client after a successful `Authenticate()` call:
+
+```typescript
+const { jurisdictionFlags } = await client.Authenticate();
+
+// Also accessible at any time after authentication:
+client.jurisdictionFlags.disabledAutoplay;
+```
+
+## JurisdictionFlags type
+
+```typescript
+type JurisdictionFlags = {
+  socialCasino: boolean;
+  disabledFullscreen: boolean;
+  disabledTurbo: boolean;
+  disabledSuperTurbo: boolean;
+  disabledAutoplay: boolean;
+  disabledSlamstop: boolean;
+  disabledSpacebar: boolean;
+  disabledBuyFeature: boolean;
+  displayNetPosition: boolean;
+  displayRTP: boolean;
+  displaySessionTimer: boolean;
+  minimumRoundDuration: number; // milliseconds
+};
+```
+
+## Flag reference
+
+| Flag                    | Type      | Description |
+| ----------------------- | --------- | ----------- |
+| `socialCasino`          | `boolean` | The player is on a social/free-play casino. Real-money wagering does not apply. See [Social casino](#social-casino). |
+| `disabledFullscreen`    | `boolean` | Hide or disable the fullscreen toggle. |
+| `disabledTurbo`         | `boolean` | Hide or disable the turbo (fast spin) option. |
+| `disabledSuperTurbo`    | `boolean` | Hide or disable the super turbo option. |
+| `disabledAutoplay`      | `boolean` | Hide or disable the autoplay feature. |
+| `disabledSlamstop`      | `boolean` | Hide or disable the slam-stop (early stop) control. |
+| `disabledSpacebar`      | `boolean` | Do not trigger a spin when the spacebar is pressed. |
+| `disabledBuyFeature`    | `boolean` | Hide or disable the buy-feature (bonus buy) button. |
+| `displayNetPosition`    | `boolean` | Show the player's net position (total wagered minus total won) for the session. |
+| `displayRTP`            | `boolean` | Display the game's Return to Player percentage. |
+| `displaySessionTimer`   | `boolean` | Display an elapsed session timer. |
+| `minimumRoundDuration`  | `number`  | Minimum time in milliseconds a round must take before the result is revealed. See [Minimum round duration](#minimum-round-duration). |
+
+## Using flags in game logic
+
+Check flags immediately after `Authenticate()` and apply them before rendering the game UI:
+
+```typescript
+const { jurisdictionFlags } = await client.Authenticate();
+
+// Hide autoplay if disabled by jurisdiction
+if (jurisdictionFlags.disabledAutoplay) {
+  autoplayButton.style.display = 'none';
+}
+
+// Show session timer if required
+if (jurisdictionFlags.displaySessionTimer) {
+  sessionTimer.start();
+}
+
+// Show net position widget if required
+if (jurisdictionFlags.displayNetPosition) {
+  netPositionDisplay.setVisible(true);
+}
+
+// Disable bonus buy button
+if (jurisdictionFlags.disabledBuyFeature) {
+  bonusBuyButton.disabled = true;
+}
+```
+
+## Minimum round duration
+
+Some jurisdictions require a minimum spin duration for responsible gaming purposes — the result must not be revealed before a certain amount of time has elapsed, even if the RGS responds faster.
+
+```typescript
+const { jurisdictionFlags } = await client.Authenticate();
+
+// Start a timer and the play request in parallel:
+const [playResult] = await Promise.all([
+  client.Play({ amount: 1_000_000, mode: 'normal' }),
+  new Promise(resolve => setTimeout(resolve, jurisdictionFlags.minimumRoundDuration)),
+]);
+
+// Only reveal the result after both the API and the timer have resolved.
+showResult(playResult.round);
+```
+
+`minimumRoundDuration` is `0` when no minimum applies.
+
+## Social casino
+
+When `socialCasino` is `true`, the player is on a free-play platform (e.g. Stake.us Gold Coins). In this context:
+
+- Real-money language ("wager", "win", currency symbols) may need to be substituted with social equivalents.
+- Responsible gaming disclosures for real-money play may not apply.
+- The currencies in use will typically be `XGC` (Gold Coin) or `XSC` (Stake Cash).
+
+```typescript
+if (jurisdictionFlags.socialCasino) {
+  // Use social-appropriate copy and imagery
+  betLabel.textContent = 'Coins per spin';
+}
+```

@@ -1,0 +1,289 @@
+---
+title: "Svelte Integration"
+description: "Integrate the Stake Engine TypeScript client into a Svelte game frontend."
+---
+
+This guide walks you through integrating the Stake Engine client into a Svelte application — from installation through authentication, reactive balance display, and the play/end-round cycle.
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install stake-engine
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add stake-engine
+    ```
+  </Tab>
+</Tabs>
+
+## Creating the client
+
+Create the `RGSClient` instance at module level — in a shared file or at the top of your root component's `<script>` block. This ensures a single instance is used throughout the session.
+
+```typescript
+// lib/client.ts — shared module-level instance
+import { RGSClient } from 'stake-engine';
+
+export const client = RGSClient({
+  url: window.location.href,
+});
+```
+
+<Tip>
+  A module-level variable is evaluated once when the module is first imported, which is the correct behavior for a session singleton. Avoid placing the `RGSClient(...)` call inside a reactive block (`$:`) or a store initializer that can re-run.
+</Tip>
+
+## Authenticating on mount
+
+Call `Authenticate()` inside `onMount` so it runs once after the component is added to the DOM.
+
+```typescript
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { client } from './lib/client';
+  import type { AuthenticateResponse } from 'stake-engine';
+
+  let authData: AuthenticateResponse | null = null;
+  let authError: string | null = null;
+
+  onMount(async () => {
+    try {
+      authData = await client.Authenticate();
+    } catch (err) {
+      authError = err instanceof Error ? err.message : 'Authentication failed';
+    }
+  });
+</script>
+
+{#if authError}
+  <p class="text-red-500">{authError}</p>
+{:else if !authData}
+  <p>Authenticating...</p>
+{:else}
+  <Game config={authData.config} flags={authData.jurisdictionFlags} />
+{/if}
+```
+
+## Subscribing to balance updates
+
+The client emits a `balanceUpdate` event on `window` every time the balance changes. Subscribe in `onMount` and return a cleanup function to remove the listener when the component is destroyed.
+
+```typescript
+<script lang="ts">
+  import { onMount } from 'svelte';
+
+  type Balance = {
+    amount: number;
+    currency: string;
+  };
+
+  let balance: Balance | null = null;
+
+  const handleBalanceUpdate = (event: CustomEvent<Balance>) => {
+    balance = event.detail;
+  };
+
+  // attach listener when component mounts
+  onMount(() => {
+    window.addEventListener('balanceUpdate', handleBalanceUpdate as EventListener);
+    return () => {
+      window.removeEventListener('balanceUpdate', handleBalanceUpdate as EventListener);
+    };
+  });
+</script>
+
+<div class="p-4 rounded-2xl shadow bg-white">
+  {#if balance}
+    <h2 class="text-lg font-semibold">Current Balance</h2>
+    <p class="text-xl font-bold">
+      {balance.amount} {balance.currency}
+    </p>
+  {:else}
+    <p class="text-gray-500">Waiting for balance update...</p>
+  {/if}
+</div>
+```
+
+<Warning>
+  Always return the cleanup function from `onMount`. Without it, the `window.addEventListener` listener remains active after the component is destroyed, causing memory leaks and updates to unmounted components.
+</Warning>
+
+### Using a Svelte store for reactive balance display
+
+For balance state shared across multiple components, use a writable store. Any component that imports the store will reactively update when the balance changes.
+
+<Tip>
+  Svelte stores are ideal for cross-component balance state. Subscribe once at the root level and let the store propagate the value everywhere it is used.
+</Tip>
+
+```typescript
+// lib/balanceStore.ts
+import { writable } from 'svelte/store';
+import type { Balance } from 'stake-engine';
+
+export const balanceStore = writable<Balance | null>(null);
+```
+
+```typescript
+<!-- Root.svelte — subscribe once at the top level -->
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { balanceStore } from './lib/balanceStore';
+  import type { Balance } from 'stake-engine';
+
+  onMount(() => {
+    const handler = (e: Event) => {
+      balanceStore.set((e as CustomEvent<Balance>).detail);
+    };
+    window.addEventListener('balanceUpdate', handler);
+    return () => window.removeEventListener('balanceUpdate', handler);
+  });
+</script>
+```
+
+```typescript
+<!-- BalanceDisplay.svelte — read from the store anywhere -->
+<script lang="ts">
+  import { balanceStore } from './lib/balanceStore';
+  import { DisplayAmount } from 'stake-engine';
+</script>
+
+{#if $balanceStore}
+  <p>{DisplayAmount($balanceStore)}</p>
+{/if}
+```
+
+## Managing the play/end-round cycle
+
+Call `Play()` from a button handler and `EndRound()` when the round is still active after `Play()` returns. Track the `roundActive` event to disable the spin button during a round.
+
+```typescript
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { client } from './lib/client';
+
+  let roundActive = false;
+  let error: string | null = null;
+
+  onMount(() => {
+    const handler = (e: Event) => {
+      roundActive = (e as CustomEvent<{ active: boolean }>).detail.active;
+    };
+    window.addEventListener('roundActive', handler as EventListener);
+    return () => window.removeEventListener('roundActive', handler as EventListener);
+  });
+
+  async function handleSpin() {
+    error = null;
+    try {
+      // amount must be an API-encoded value (e.g. 1_000_000 = $1.00)
+      const result = await client.Play({ amount: 1_000_000, mode: 'normal' });
+
+      // If the round is still active (e.g. a feature triggered), call EndRound
+      if (result.round.active) {
+        await client.EndRound();
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Unknown error';
+    }
+  }
+</script>
+
+<button on:click={handleSpin} disabled={roundActive}>
+  {roundActive ? 'Spinning...' : 'Spin'}
+</button>
+
+{#if error}
+  <p class="text-red-500">{error}</p>
+{/if}
+```
+
+## Complete example
+
+The following puts all of the above together in a single self-contained game component.
+
+```typescript
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { writable } from 'svelte/store';
+  import { RGSClient, DisplayAmount } from 'stake-engine';
+  import type { AuthenticateResponse, Balance } from 'stake-engine';
+
+  // Create once at module level
+  const client = RGSClient({ url: window.location.href });
+
+  const balanceStore = writable<Balance | null>(null);
+  let authData: AuthenticateResponse | null = null;
+  let roundActive = false;
+  let error: string | null = null;
+
+  onMount(async () => {
+    // Authenticate
+    try {
+      authData = await client.Authenticate();
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Authentication failed';
+      return;
+    }
+
+    // Subscribe to balance updates
+    const onBalance = (e: Event) => {
+      balanceStore.set((e as CustomEvent<Balance>).detail);
+    };
+    window.addEventListener('balanceUpdate', onBalance);
+
+    // Subscribe to round active state
+    const onRound = (e: Event) => {
+      roundActive = (e as CustomEvent<{ active: boolean }>).detail.active;
+    };
+    window.addEventListener('roundActive', onRound as EventListener);
+
+    return () => {
+      window.removeEventListener('balanceUpdate', onBalance);
+      window.removeEventListener('roundActive', onRound as EventListener);
+    };
+  });
+
+  async function handleSpin() {
+    if (!authData) return;
+    error = null;
+    try {
+      const result = await client.Play({
+        amount: authData.config.defaultBetLevel,
+        mode: 'normal',
+      });
+      if (result.round.active) {
+        await client.EndRound();
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Unknown error';
+    }
+  }
+</script>
+
+{#if !authData}
+  <p>Authenticating...</p>
+{:else}
+  <div>
+    {#if $balanceStore}
+      <p>Balance: {DisplayAmount($balanceStore)}</p>
+    {/if}
+
+    {#if error}
+      <p class="text-red-500">{error}</p>
+    {/if}
+
+    <button on:click={handleSpin} disabled={roundActive}>
+      {roundActive ? 'Spinning...' : 'Spin'}
+    </button>
+
+    {#if !authData.jurisdictionFlags.disabledAutoplay}
+      <button disabled={roundActive}>Autoplay</button>
+    {/if}
+  </div>
+{/if}
+```

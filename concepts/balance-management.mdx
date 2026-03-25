@@ -1,0 +1,135 @@
+---
+title: "Balance Management"
+description: "Understanding how balances are returned, formatted, and kept fresh in the Stake Engine client."
+---
+
+All monetary values in the Stake Engine API are encoded as integers scaled by `1,000,000`. The client provides helpers to convert and display these amounts correctly for any supported currency.
+
+## Amount encoding
+
+All API amounts use an integer multiplier of `1,000,000`. This avoids floating-point precision issues across all currencies.
+
+```typescript
+import { ParseAmount } from 'stake-engine';
+
+// $1.00 USD is represented as:
+const raw = 1_000_000;
+
+// Convert to a decimal for display:
+const decimal = ParseAmount(raw); // → 1.00  (raw / 1_000_000)
+```
+
+| Raw amount  | Decimal | Example currency |
+| ----------- | ------- | ---------------- |
+| `1_000_000` | `1.00`  | $1.00 USD        |
+| `500_000`   | `0.50`  | €0.50 EUR        |
+| `1_000_000` | `1`     | ¥1 JPY           |
+| `10_000_000`| `10.00` | 10.00 GC (XGC)   |
+| `250_000`   | `0.25`  | 0.25 SC (XSC)    |
+
+## The Balance type
+
+Every balance in the SDK is represented as:
+
+```typescript
+type Balance = {
+  amount: number;   // scaled integer (divide by 1_000_000 for display)
+  currency: Currency;
+};
+```
+
+The `Currency` type is a union of all supported currency codes (e.g. `'USD'`, `'EUR'`, `'JPY'`, `'XGC'`, `'XSC'`).
+
+## How balance is updated
+
+Every method that contacts the API parses the returned balance and immediately emits a `balanceUpdate` event. The `client.balance` property is also updated synchronously within each call.
+
+| Method         | Updates balance | Emits `balanceUpdate` |
+| -------------- | --------------- | --------------------- |
+| `Authenticate` | Yes             | Yes (line 126)        |
+| `Play`         | Yes             | Yes (line 256)        |
+| `EndRound`     | Yes             | Yes (line 302)        |
+| Idle refresh   | Yes             | Yes (line 171)        |
+
+```typescript
+// After any of these calls, client.balance is always up to date:
+const { balance } = await client.Authenticate();
+console.log(client.balance); // same as balance
+
+const { balance: playBalance } = await client.Play({ amount: 1_000_000, mode: 'normal' });
+console.log(client.balance); // updated to playBalance
+```
+
+## client.balance property
+
+The `client.balance` property always reflects the most recently received balance from any API call or idle refresh. You can read it at any time without making a network request:
+
+```typescript
+// Safe to read between rounds:
+const current: Balance = client.balance;
+console.log(current.amount);   // e.g. 5_000_000
+console.log(current.currency); // e.g. 'USD'
+```
+
+## Displaying amounts
+
+`DisplayAmount` formats a `Balance` into a human-readable string using the browser locale and the currency's standard symbol and decimal rules.
+
+```typescript
+import { DisplayAmount } from 'stake-engine';
+
+const balance: Balance = { amount: 10_000_000, currency: 'USD' };
+
+DisplayAmount(balance);                                    // '$10.00'
+DisplayAmount(balance, { removeSymbol: true });            // '10.00'
+DisplayAmount(balance, { decimals: 0 });                   // '$10'
+DisplayAmount({ amount: 10_000_000, currency: 'JPY' });    // '¥10'
+DisplayAmount({ amount: 10_250_000, currency: 'XGC' });    // '10 GC'
+DisplayAmount({ amount: 10_250_000, currency: 'XSC' });    // '10.25 SC'
+```
+
+### DisplayAmount options
+
+| Option                    | Type      | Default | Description |
+| ------------------------- | --------- | ------- | ----------- |
+| `removeSymbol`            | `boolean` | `false` | Omit the currency symbol from the output. |
+| `decimals`                | `number`  | Currency default | Override the number of decimal places shown. |
+| `trimDecimalForIntegers`  | `boolean` | `false` | Show no decimals when the amount is a whole number. |
+
+The function respects the browser's locale (`navigator.language`) for digit grouping and decimal separators.
+
+## Currency formatting reference
+
+| Currency         | Code  | Symbol | Example output   | Decimals |
+| ---------------- | ----- | ------ | ---------------- | -------- |
+| US Dollar        | `USD` | `$`    | `$10.00`         | 2        |
+| Euro             | `EUR` | `€`    | `€10.00`         | 2        |
+| Japanese Yen     | `JPY` | `¥`    | `¥10`            | 0        |
+| South Korean Won | `KRW` | `₩`    | `₩10`            | 0        |
+| Indonesian Rupiah| `IDR` | `Rp`   | `Rp10`           | 0        |
+| Polish Złoty     | `PLN` | `zł`   | `10.00 zł`       | 2        |
+| Danish Krone     | `DKK` | `KR`   | `10.00 KR`       | 2        |
+| Stake Gold Coin  | `XGC` | `GC`   | `10 GC`          | 0        |
+| Stake Cash       | `XSC` | `SC`   | `10.25 SC`       | 2        |
+
+Symbols that appear after the amount (`symbolAfter: true`) include: DKK, PLN, VND, CLP, ARS, PEN, SAR, ILS, AED, TND, OMR, QAR, XGC, XSC.
+
+## parseBalance helper
+
+`parseBalance` converts a raw API response object (where `currency` is an untyped string) to a typed `Balance`:
+
+```typescript
+import { parseBalance } from 'stake-engine';
+
+const raw = { amount: 5_000_000, currency: 'EUR' };
+const balance: Balance = parseBalance(raw);
+// { amount: 5_000_000, currency: 'EUR' }
+```
+
+This helper is used internally by the client after every API response. You only need it when working with raw API payloads outside the client.
+
+## Idle balance refresh
+
+When the player is idle (no active round), the client fetches a fresh balance every 60 seconds via an internal interval. Each refresh updates `client.balance` and emits a `balanceUpdate` event — no polling code required in your game.
+
+See [Client Lifecycle](/concepts/client-lifecycle) for details on when the interval starts and resets.

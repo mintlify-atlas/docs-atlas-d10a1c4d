@@ -1,0 +1,164 @@
+---
+title: 'Helpers'
+description: 'Utility functions for converting and formatting Stake Engine amounts and balances.'
+---
+
+The Stake Engine client exports three helper functions for working with amounts and balances. All monetary values in the RGS API are integers scaled by a factor of `1,000,000` — helpers handle converting those values to and from human-readable numbers and strings.
+
+```typescript
+import { DisplayAmount, ParseAmount, parseBalance } from 'stake-engine';
+```
+
+---
+
+## ParseAmount
+
+Converts an RGS integer amount to a decimal number by dividing by `1,000,000`.
+
+```typescript
+import { ParseAmount } from 'stake-engine';
+
+ParseAmount(val: number): number
+```
+
+<ParamField path="val" type="number" required>
+  The raw RGS integer amount to convert.
+</ParamField>
+
+### How it works
+
+All amounts in the Stake Engine RGS API are integers scaled by `1,000,000`. For example, a balance of `$1.50` is represented as `1,500,000` in the API. `ParseAmount` divides by that factor to recover the decimal value.
+
+| Raw API value | ParseAmount result |
+| ------------- | ------------------ |
+| `1_000_000`   | `1.0`              |
+| `1_500_000`   | `1.5`              |
+| `500_000`     | `0.5`              |
+| `0`           | `0.0`              |
+
+### Example
+
+```typescript
+ParseAmount(1_000_000); // 1
+ParseAmount(1_500_000); // 1.5
+ParseAmount(500_000);   // 0.5
+```
+
+---
+
+## DisplayAmount
+
+Formats a [`Balance`](/api/types#balance) object as a localized currency string. Uses `Intl.NumberFormat` with the browser's locale (`navigator.language`) for locale-aware number formatting, and applies per-currency symbol placement and decimal defaults.
+
+```typescript
+import { DisplayAmount } from 'stake-engine';
+
+DisplayAmount(balance: Balance, options?: DisplayAmountOptions): string
+```
+
+### Parameters
+
+<ParamField path="balance" type="Balance" required>
+  A `Balance` object with `amount` (raw RGS integer) and `currency` (a [`Currency`](/api/types#currency) code).
+</ParamField>
+
+<ParamField path="options.removeSymbol" type="boolean">
+  When `true`, the currency symbol is omitted from the output. Defaults to `false`.
+</ParamField>
+
+<ParamField path="options.decimals" type="number">
+  Forces a specific number of decimal places, overriding the currency's default. For example, passing `0` for USD will display `$1` instead of `$1.00`.
+</ParamField>
+
+<ParamField path="options.trimDecimalForIntegers" type="boolean">
+  When `true`, removes decimal places for whole numbers. A value of `1.00` displays as `$1`. Has no effect on fractional amounts.
+</ParamField>
+
+### Symbol placement
+
+Each currency has a default symbol and a placement (before or after the number). The table below shows examples:
+
+| Currency | Symbol | Placement | Example         |
+| -------- | ------ | --------- | --------------- |
+| USD      | `$`    | Before    | `$1.00`         |
+| EUR      | `€`    | Before    | `€1.50`         |
+| JPY      | `¥`    | Before    | `¥2`            |
+| DKK      | `KR`   | After     | `1.00 KR`       |
+| PLN      | `zł`   | After     | `1.00 zł`       |
+| XGC      | `GC`   | After     | `5 GC`          |
+| XSC      | `SC`   | After     | `1.00 SC`       |
+
+### Examples
+
+```typescript
+DisplayAmount({ amount: 1_000_000, currency: 'USD' });
+// "$1.00"
+
+DisplayAmount({ amount: 1_000_000, currency: 'USD' }, { removeSymbol: true });
+// "1.00"
+
+DisplayAmount({ amount: 2_000_000, currency: 'JPY' });
+// "¥2"
+
+DisplayAmount({ amount: 1_500_000, currency: 'EUR' });
+// "€1.50"
+
+DisplayAmount({ amount: 5_000_000, currency: 'XGC' });
+// "5 GC"
+
+DisplayAmount({ amount: 1_000_000, currency: 'USD' }, { trimDecimalForIntegers: true });
+// "$1"
+
+DisplayAmount({ amount: 1_000_000, currency: 'USD' }, { decimals: 0 });
+// "$1"
+```
+
+---
+
+## parseBalance
+
+Converts a raw API response object to a typed [`Balance`](/api/types#balance) by casting the `currency` string to the `Currency` type. This is primarily used internally by the RGS client, but it is available if you need to process raw API payloads manually.
+
+```typescript
+import { parseBalance } from 'stake-engine';
+
+parseBalance(balance: { amount: number; currency: string }): Balance
+```
+
+### Parameters
+
+<ParamField path="balance" type="object" required>
+  Raw balance object from the API.
+
+  <Expandable title="properties">
+    <ParamField path="balance.amount" type="number" required>
+      The raw RGS integer amount (e.g. `1_000_000` for 1 unit).
+    </ParamField>
+    <ParamField path="balance.currency" type="string" required>
+      The currency code string (e.g. `"USD"`). Cast to [`Currency`](/api/types#currency) internally.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Returns
+
+<ResponseField name="balance" type="Balance">
+  A typed `Balance` object.
+
+  <Expandable title="properties">
+    <ResponseField name="amount" type="number">
+      The raw RGS integer amount.
+    </ResponseField>
+    <ResponseField name="currency" type="Currency">
+      The currency code cast to the [`Currency`](/api/types#currency) union type.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```typescript
+const raw = { amount: 1_500_000, currency: 'USD' };
+const balance = parseBalance(raw);
+// { amount: 1_500_000, currency: 'USD' }
+```

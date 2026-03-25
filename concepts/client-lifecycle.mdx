@@ -1,0 +1,136 @@
+---
+title: "Client Lifecycle"
+description: "How the RGSClient initializes, authenticates, manages game rounds, and handles idle balance refresh."
+---
+
+The `RGSClient` factory function creates and returns a typed client object. Understanding its lifecycle — from initialization through round management — is essential for integrating Stake Engine into your game.
+
+## Initialization
+
+`RGSClient` reads configuration from URL search parameters at construction time. The URL must include `sessionID` and `rgs_url`; `lang` and `device` are optional with sensible defaults.
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+const client = RGSClient({
+  url: window.location.href,         // must contain sessionID and rgs_url params
+  enforceBetLevels: true,            // default: true
+  protocol: 'https',                 // default: 'https'
+});
+```
+
+### Required URL parameters
+
+| Parameter  | Required | Default     | Description |
+| ---------- | -------- | ----------- | ----------- |
+| `sessionID`| Yes      | —           | Unique identifier for the player's session. Used in every API request. |
+| `rgs_url`  | Yes      | —           | Base hostname for the RGS API (e.g. `rgs.stake-engine.com`). |
+| `lang`     | No       | `en`        | ISO 639-1 language code passed by the operator. |
+| `device`   | No       | `desktop`   | `desktop` or `mobile`. Used for responsive layout hints. |
+
+If `sessionID` or `rgs_url` is missing, or if `device` is not `desktop` or `mobile`, `RGSClient` throws immediately.
+
+## Authentication
+
+Call `Authenticate()` before any other method. It establishes the session with the RGS, returns the player's starting balance, game configuration, and jurisdiction flags, and stores them on the client.
+
+```typescript
+const { balance, config, jurisdictionFlags } = await client.Authenticate();
+
+// config contains:
+// config.betLevels      — number[]
+// config.minBet         — number
+// config.maxBet         — number
+// config.stepBet        — number
+// config.defaultBetLevel — number
+```
+
+All subsequent calls (`Play`, `EndRound`, `Event`) will throw `'Client is not authenticated, please call Authenticate()'` if called without authenticating first.
+
+<Note>
+If a round was already active when the session was created (e.g. a browser refresh mid-spin), `Authenticate` emits a `roundActive` event with `active: true` so your UI can restore its state.
+</Note>
+
+## Round state machine
+
+The client tracks an internal `roundActive` boolean to prevent concurrent bets. `Play` sets it to `true`; `EndRound` (or a failed `Play`) sets it back to `false`.
+
+<Steps>
+  <Step title="Call Play">
+    `Play` validates the bet amount, emits `roundActive: true`, and sends the wager to the RGS. The internal `roundActive` flag is set before the network request.
+
+    ```typescript
+    const { balance, round } = await client.Play({
+      amount: 1_000_000, // $1.00 in scaled units
+      mode: 'normal',
+    });
+    ```
+  </Step>
+  <Step title="Handle round result">
+    If the server returns `round.active === false` (a single-request round), `roundActive` is reset immediately and a `roundActive: false` event is emitted. No call to `EndRound` is needed.
+  </Step>
+  <Step title="Call EndRound (if round is still active)">
+    For multi-step rounds where `round.active` remains `true` after `Play`, call `EndRound` to settle the bet.
+
+    ```typescript
+    const { balance } = await client.EndRound();
+    ```
+
+    `EndRound` emits `roundActive: false` and resets the flag.
+  </Step>
+</Steps>
+
+### Concurrent round protection
+
+Calling `Play` while a round is already active throws an error:
+
+```typescript
+// roundActive === true (Play was called and round is still open)
+await client.Play({ amount: 1_000_000, mode: 'normal' });
+// throws: 'A round is already active, please call EndRound() before starting a new round'
+```
+
+## Idle balance refresh
+
+After each successful `Play` or `EndRound`, the client starts (or restarts) a 60-second interval that fetches the current balance in the background:
+
+```typescript
+// From client.ts lines 184–189
+const startBalanceInterval = () => {
+  if (balanceInterval) {
+    clearInterval(balanceInterval);
+  }
+  balanceInterval = setInterval(balanceFn, 60 * 1000);
+};
+```
+
+The internal `balanceFn` calls `POST /wallet/balance`, updates `client.balance`, and emits a `balanceUpdate` event. The interval is reset after every round so that the 60-second countdown always starts from the end of the most recent activity.
+
+<Note>
+The interval only runs when a round is not in progress. During an active round the balance is updated by the `Play` and `EndRound` responses directly.
+</Note>
+
+## Bet level enforcement
+
+By default, `Play` validates that the requested amount is one of the values in `config.betLevels` returned by `Authenticate`. This prevents bets that are technically within the min/max range but are not operator-configured levels.
+
+```typescript
+// enforceBetLevels defaults to true
+const client = RGSClient({ url: window.location.href });
+
+// If betLevels is [500_000, 1_000_000, 2_000_000]:
+await client.Play({ amount: 750_000, mode: 'normal' });
+// throws: 'Bet amount must be one of the following levels: 500000, 1000000, 2000000.
+//          You may disable bet level enforcement by setting enforceBetLevels to false...'
+```
+
+To disable enforcement (e.g. for a custom bet slider that still respects `minBet`/`maxBet`/`stepBet`):
+
+```typescript
+const client = RGSClient({
+  url: window.location.href,
+  enforceBetLevels: false,
+});
+```
+
+When `enforceBetLevels` is `false`, `Play` still validates that the amount is between `minBet` and `maxBet` and is a multiple of `stepBet`.

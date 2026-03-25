@@ -1,0 +1,102 @@
+---
+title: "RGSClient"
+description: "Factory function that creates and returns a fully configured Stake Engine RGS client."
+---
+
+## Import
+
+```typescript
+import { RGSClient } from 'stake-engine';
+```
+
+## Signature
+
+```typescript
+RGSClient(options: {
+  url: string;
+  enforceBetLevels?: boolean;
+  protocol?: 'http' | 'https';
+}): Client
+```
+
+`RGSClient` is a factory function — call it once at startup to get back a `Client` object. It parses the required query parameters from `url`, validates them, and configures the internal HTTP base URL. If any required parameter is missing the function throws synchronously before returning.
+
+## Parameters
+
+<ParamField body="url" type="string" required>
+  Full page URL to parse session and configuration parameters from. In a browser context this is typically `window.location.href`. Must contain the query parameters described below.
+</ParamField>
+
+<ParamField body="enforceBetLevels" type="boolean" default="true">
+  When `true`, [`Play()`](/api/play) validates that the bet amount is present in `config.betLevels` returned by [`Authenticate()`](/api/authenticate). Set to `false` to allow any amount that passes the `minBet`/`maxBet`/`stepBet` checks.
+</ParamField>
+
+<ParamField body="protocol" type="'http' | 'https'" default="'https'">
+  Protocol prepended to the `rgs_url` query parameter when building the RGS API base URL. Use `'http'` only in local development environments.
+</ParamField>
+
+## URL query parameters
+
+The following query parameters are read from `url`. Parameters marked required cause `RGSClient` to throw if absent.
+
+<ParamField query="sessionID" type="string" required>
+  Unique identifier for the player's session. Sent with every API request.
+</ParamField>
+
+<ParamField query="rgs_url" type="string" required>
+  Base hostname for the RGS API, without a protocol prefix (e.g. `rgs.stake-engine.com`). The `protocol` option is prepended automatically.
+</ParamField>
+
+<ParamField query="lang" type="string" default="'en'">
+  ISO 639-1 language code passed to the RGS API during authentication. Supported values: `ar`, `de`, `en`, `es`, `fi`, `fr`, `hi`, `id`, `ja`, `ko`, `pl`, `pt`, `ru`, `tr`, `vi`, `zh`.
+</ParamField>
+
+<ParamField query="device" type="string" default="'desktop'">
+  Device type hint for responsive design. Accepted values: `desktop`, `mobile`. Any other value causes `RGSClient` to throw.
+</ParamField>
+
+## Returns
+
+A `Client` object with the following API methods and read-only properties:
+
+| Member | Type | Description |
+| --- | --- | --- |
+| `sessionID` | `string` | Session ID parsed from the URL. |
+| `lang` | `Language` | Language code parsed from the URL. |
+| `device` | `string` | Device type parsed from the URL. |
+| `balance` | `Balance` | Most recent balance. Populated after the first `Authenticate()` call. |
+| `authenticateConfig` | `AuthenticateConfig` | Bet configuration. Populated after `Authenticate()`. |
+| `jurisdictionFlags` | `JurisdictionFlags` | Feature flags. Populated after `Authenticate()`. |
+| `Authenticate()` | `() => Promise<AuthenticateResponse>` | See [Authenticate](/api/authenticate). |
+| `Play()` | `(params: PlayParameters) => Promise<PlayResponse>` | See [Play](/api/play). |
+| `EndRound()` | `() => Promise<EndRoundResponse>` | See [EndRound](/api/end-round). |
+| `Event()` | `(eventValue: string) => Promise<EventResponse>` | See [Event](/api/event). |
+
+<Warning>
+  `RGSClient` throws synchronously if `sessionID` or `rgs_url` are missing from the URL, or if `device` is not `desktop` or `mobile`. Wrap the call in a try/catch or ensure the URL is well-formed before calling.
+</Warning>
+
+## Example
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+// Initialise the client once, typically at game startup.
+const client = RGSClient({
+  url: window.location.href,
+  // e.g. https://game.example.com/play
+  //   ?sessionID=abc123
+  //   &rgs_url=rgs.stake-engine.com
+  //   &lang=en
+  //   &device=desktop
+  enforceBetLevels: true,
+  protocol: 'https',
+});
+
+// The client is now ready. Call Authenticate() next.
+const { balance, config, jurisdictionFlags } = await client.Authenticate();
+```
+
+<Note>
+  The `Client` object is not a class instance — do not use `new`. Call `RGSClient(...)` directly and use the returned object.
+</Note>

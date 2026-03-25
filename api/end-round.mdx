@@ -1,0 +1,92 @@
+---
+title: "EndRound"
+description: "Completes an active round and returns the final player balance."
+---
+
+## Signature
+
+```typescript
+client.EndRound(): Promise<EndRoundResponse>
+```
+
+`EndRound` POSTs the `sessionID` to `/wallet/end-round` to close the current open round. Call it when `Play()` returns a `Round` with `active === true`.
+
+<Warning>
+  Only call `EndRound()` when `round.active` is `true` in the `Play()` response. Calling it when there is no active round will result in an API error.
+</Warning>
+
+## When to call EndRound
+
+```typescript
+const { round } = await client.Play({ amount: betAmount, mode: 'base' });
+
+if (round.active) {
+  // The server needs an explicit close signal — call EndRound.
+  await client.EndRound();
+} else {
+  // The round completed in a single Play() request — do not call EndRound.
+}
+```
+
+Whether `round.active` is `true` depends on the game type:
+
+- **Single-request games** — `Play()` resolves the outcome immediately and returns `active: false`. `EndRound` is not required.
+- **Multi-step games** — `Play()` opens a round (e.g. a feature game or free spins) and returns `active: true`. Call `EndRound` after all steps are complete.
+
+## Returns
+
+<ResponseField name="balance" type="Balance" required>
+  Final player balance after the round was closed.
+  <Expandable title="Balance properties">
+    <ResponseField name="amount" type="number" required>
+      Balance amount in RGS units. Use `DisplayAmount` to format for display.
+    </ResponseField>
+    <ResponseField name="currency" type="string" required>
+      ISO 4217 currency code.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Side effects
+
+| Event | Condition |
+| --- | --- |
+| `window` emits `balanceUpdate` | Always, with the final `Balance`. |
+| `window` emits `roundActive` with `{ active: false }` | Always. |
+| Internal `roundActive` set to `false` | Always. |
+| Idle balance interval restarted | Always, after a successful response. |
+
+## Throws
+
+- Throws an `Error` with `'Client is not authenticated, please call Authenticate()'` if `Authenticate()` has not been called.
+- Throws an `Error` if the RGS API returns a non-2xx HTTP status.
+
+## Example
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+const { config } = await client.Authenticate();
+
+const betAmount = config.betLevels[config.defaultBetLevel];
+
+const { balance, round } = await client.Play({
+  amount: betAmount,
+  mode: 'base',
+});
+
+if (round.active) {
+  // Play the round animations / feature game in your UI, then close the round.
+  await playRoundAnimation(round);
+
+  const { balance: finalBalance } = await client.EndRound();
+  console.log('Round closed. Final balance:', finalBalance.amount);
+} else {
+  console.log('Round resolved immediately. Balance:', balance.amount);
+}
+```
+
+<Note>
+  After `EndRound()` returns, the client resets its internal `roundActive` flag to `false`, allowing the next `Play()` call to proceed.
+</Note>

@@ -1,0 +1,414 @@
+---
+title: 'Types'
+description: 'TypeScript type definitions exported by the Stake Engine client.'
+---
+
+All types are exported from the `stake-engine` package and can be imported as type-only imports:
+
+```typescript
+import type {
+  AuthenticateConfig,
+  AuthenticateResponse,
+  Balance,
+  BalanceResponse,
+  Currency,
+  EndRoundResponse,
+  EventResponse,
+  JurisdictionFlags,
+  Language,
+  PlayParameters,
+  PlayResponse,
+  Round,
+} from 'stake-engine';
+```
+
+---
+
+## Balance
+
+Represents a monetary amount paired with its currency. All `amount` values are raw RGS integers — divide by `1,000,000` (or use [`ParseAmount`](/api/helpers#parseamount)) to get the decimal value.
+
+```typescript
+type Balance = {
+  amount: number;
+  currency: Currency;
+};
+```
+
+<ResponseField name="amount" type="number" required>
+  The raw RGS integer amount. For example, `1_000_000` represents 1 unit of the currency.
+</ResponseField>
+
+<ResponseField name="currency" type="Currency" required>
+  The currency code. See [`Currency`](#currency) for all supported values.
+</ResponseField>
+
+Used in: [`AuthenticateResponse`](#authenticateresponse), [`BalanceResponse`](#balanceresponse), [`PlayResponse`](#playresponse), [`EndRoundResponse`](#endroundresponse).
+
+---
+
+## Currency
+
+A union type of all 35 supported currency codes.
+
+```typescript
+type Currency =
+  | 'USD' | 'CAD' | 'JPY' | 'EUR' | 'RUB' | 'CNY'
+  | 'PHP' | 'INR' | 'IDR' | 'KRW' | 'BRL' | 'MXN'
+  | 'DKK' | 'PLN' | 'VND' | 'TRY' | 'CLP' | 'ARS'
+  | 'PEN' | 'NGN' | 'SAR' | 'ILS' | 'AED' | 'TWD'
+  | 'NOK' | 'KWD' | 'JOD' | 'CRC' | 'TND' | 'SGD'
+  | 'MYR' | 'OMR' | 'QAR' | 'BHD' | 'XGC' | 'XSC';
+```
+
+| Code  | Currency                          | Symbol |
+| ----- | --------------------------------- | ------ |
+| `USD` | United States Dollar              | `$`    |
+| `CAD` | Canadian Dollar                   | `CA$`  |
+| `JPY` | Japanese Yen                      | `¥`    |
+| `EUR` | Euro                              | `€`    |
+| `RUB` | Russian Ruble                     | `₽`    |
+| `CNY` | Chinese Yuan                      | `CN¥`  |
+| `PHP` | Philippine Peso                   | `₱`    |
+| `INR` | Indian Rupee                      | `₹`    |
+| `IDR` | Indonesian Rupiah                 | `Rp`   |
+| `KRW` | South Korean Won                  | `₩`    |
+| `BRL` | Brazilian Real                    | `R$`   |
+| `MXN` | Mexican Peso                      | `MX$`  |
+| `DKK` | Danish Krone                      | `KR`   |
+| `PLN` | Polish Złoty                      | `zł`   |
+| `VND` | Vietnamese Đồng                   | `₫`    |
+| `TRY` | Turkish Lira                      | `₺`    |
+| `CLP` | Chilean Peso                      | `CLP`  |
+| `ARS` | Argentine Peso                    | `ARS`  |
+| `PEN` | Peruvian Sol                      | `S/`   |
+| `NGN` | Nigerian Naira                    | `₦`    |
+| `SAR` | Saudi Arabia Riyal                | `SAR`  |
+| `ILS` | Israel Shekel                     | `ILS`  |
+| `AED` | United Arab Emirates Dirham       | `AED`  |
+| `TWD` | Taiwan New Dollar                 | `NT$`  |
+| `NOK` | Norway Krone                      | `kr`   |
+| `KWD` | Kuwaiti Dinar                     | `KD`   |
+| `JOD` | Jordanian Dinar                   | `JD`   |
+| `CRC` | Costa Rica Colon                  | `₡`    |
+| `TND` | Tunisian Dinar                    | `TND`  |
+| `SGD` | Singapore Dollar                  | `SG$`  |
+| `MYR` | Malaysia Ringgit                  | `RM`   |
+| `OMR` | Oman Rial                         | `OMR`  |
+| `QAR` | Qatar Riyal                       | `QAR`  |
+| `BHD` | Bahraini Dinar                    | `BD`   |
+| `XGC` | Stake Gold Coin                   | `GC`   |
+| `XSC` | Stake Cash                        | `SC`   |
+
+See [`DisplayAmount`](/api/helpers#displayamount) for how each currency's symbol and decimal places are rendered.
+
+---
+
+## Language
+
+ISO 639-1 language codes supported by the Stake Engine client.
+
+```typescript
+type Language =
+  | 'ar' | 'de' | 'en' | 'es' | 'fi' | 'fr'
+  | 'hi' | 'id' | 'ja' | 'ko' | 'pl' | 'pt'
+  | 'ru' | 'tr' | 'vi' | 'zh';
+```
+
+| Code  | Language    |
+| ----- | ----------- |
+| `ar`  | Arabic      |
+| `de`  | German      |
+| `en`  | English     |
+| `es`  | Spanish     |
+| `fi`  | Finnish     |
+| `fr`  | French      |
+| `hi`  | Hindi       |
+| `id`  | Indonesian  |
+| `ja`  | Japanese    |
+| `ko`  | Korean      |
+| `pl`  | Polish      |
+| `pt`  | Portuguese  |
+| `ru`  | Russian     |
+| `tr`  | Turkish     |
+| `vi`  | Vietnamese  |
+| `zh`  | Chinese     |
+
+---
+
+## AuthenticateConfig
+
+Bet configuration returned by the [`authenticate`](/api/authenticate) method. All amounts are raw RGS integers.
+
+```typescript
+type AuthenticateConfig = {
+  minBet: number;
+  maxBet: number;
+  stepBet: number;
+  defaultBetLevel: number;
+  betLevels: number[];
+};
+```
+
+<ResponseField name="minBet" type="number" required>
+  The minimum allowed bet amount as a raw RGS integer.
+</ResponseField>
+
+<ResponseField name="maxBet" type="number" required>
+  The maximum allowed bet amount as a raw RGS integer.
+</ResponseField>
+
+<ResponseField name="stepBet" type="number" required>
+  The increment between valid bet amounts as a raw RGS integer.
+</ResponseField>
+
+<ResponseField name="defaultBetLevel" type="number" required>
+  The index into `betLevels` that should be selected by default.
+</ResponseField>
+
+<ResponseField name="betLevels" type="number[]" required>
+  The list of discrete bet amounts available to the player, as raw RGS integers.
+</ResponseField>
+
+---
+
+## JurisdictionFlags
+
+A set of boolean and numeric flags that govern which game features are permitted in the player's jurisdiction. Returned by [`authenticate`](/api/authenticate).
+
+```typescript
+type JurisdictionFlags = {
+  socialCasino: boolean;
+  disabledFullscreen: boolean;
+  disabledTurbo: boolean;
+  disabledSuperTurbo: boolean;
+  disabledAutoplay: boolean;
+  disabledSlamstop: boolean;
+  disabledSpacebar: boolean;
+  disabledBuyFeature: boolean;
+  displayNetPosition: boolean;
+  displayRTP: boolean;
+  displaySessionTimer: boolean;
+  minimumRoundDuration: number;
+};
+```
+
+<ResponseField name="socialCasino" type="boolean" required>
+  When `true`, the game is running in social casino mode (e.g. Stake US Gold Coin or Stake Cash play).
+</ResponseField>
+
+<ResponseField name="disabledFullscreen" type="boolean" required>
+  When `true`, the fullscreen toggle must be hidden.
+</ResponseField>
+
+<ResponseField name="disabledTurbo" type="boolean" required>
+  When `true`, turbo mode must be disabled and its UI controls hidden.
+</ResponseField>
+
+<ResponseField name="disabledSuperTurbo" type="boolean" required>
+  When `true`, super turbo mode must be disabled and its UI controls hidden.
+</ResponseField>
+
+<ResponseField name="disabledAutoplay" type="boolean" required>
+  When `true`, autoplay must be disabled and its UI controls hidden.
+</ResponseField>
+
+<ResponseField name="disabledSlamstop" type="boolean" required>
+  When `true`, slam stop (interrupting a spin early) must be disabled.
+</ResponseField>
+
+<ResponseField name="disabledSpacebar" type="boolean" required>
+  When `true`, the spacebar shortcut for spinning must be disabled.
+</ResponseField>
+
+<ResponseField name="disabledBuyFeature" type="boolean" required>
+  When `true`, the buy feature (purchasing bonus rounds) must be disabled and hidden.
+</ResponseField>
+
+<ResponseField name="displayNetPosition" type="boolean" required>
+  When `true`, the game must display the player's net position (total wagered minus total won) for the session.
+</ResponseField>
+
+<ResponseField name="displayRTP" type="boolean" required>
+  When `true`, the game must display its return-to-player (RTP) percentage.
+</ResponseField>
+
+<ResponseField name="displaySessionTimer" type="boolean" required>
+  When `true`, the game must display a timer showing how long the current session has been active.
+</ResponseField>
+
+<ResponseField name="minimumRoundDuration" type="number" required>
+  The minimum number of milliseconds a round must last before the result can be shown to the player.
+</ResponseField>
+
+---
+
+## Round
+
+Represents the state of a game round. Returned by [`authenticate`](/api/authenticate) (if a round is in progress) and [`play`](/api/play).
+
+```typescript
+type Round = {
+  betID: number;
+  amount?: number;
+  payout?: number;
+  payoutMultiplier?: number;
+  active: boolean;
+  mode: string;
+  event?: string;
+  state: unknown;
+};
+```
+
+<ResponseField name="betID" type="number" required>
+  The unique identifier for this bet/round.
+</ResponseField>
+
+<ResponseField name="amount" type="number">
+  The amount wagered for this round as a raw RGS integer. May be absent if not yet determined.
+</ResponseField>
+
+<ResponseField name="payout" type="number">
+  The payout for this round as a raw RGS integer. Present once the round result is determined.
+</ResponseField>
+
+<ResponseField name="payoutMultiplier" type="number">
+  The payout multiplier for this round. Present once the round result is determined.
+</ResponseField>
+
+<ResponseField name="active" type="boolean" required>
+  `true` when the round is still in progress and has not yet been settled.
+</ResponseField>
+
+<ResponseField name="mode" type="string" required>
+  The game mode for this round (e.g. `"base"`, `"bonus"`). Game-specific.
+</ResponseField>
+
+<ResponseField name="event" type="string">
+  An optional event identifier associated with this round. See [`event`](/api/event).
+</ResponseField>
+
+<ResponseField name="state" type="unknown" required>
+  Game-specific round state data. The shape of this object depends on the game implementation.
+</ResponseField>
+
+---
+
+## AuthenticateResponse
+
+Returned by the [`authenticate`](/api/authenticate) method.
+
+```typescript
+type AuthenticateResponse = {
+  balance: Balance;
+  config: AuthenticateConfig;
+  jurisdictionFlags: JurisdictionFlags;
+  round: Round | null;
+};
+```
+
+<ResponseField name="balance" type="Balance" required>
+  The player's current balance. See [`Balance`](#balance).
+</ResponseField>
+
+<ResponseField name="config" type="AuthenticateConfig" required>
+  Bet configuration for the session. See [`AuthenticateConfig`](#authenticateconfig).
+</ResponseField>
+
+<ResponseField name="jurisdictionFlags" type="JurisdictionFlags" required>
+  Feature flags for the player's jurisdiction. See [`JurisdictionFlags`](#jurisdictionflags).
+</ResponseField>
+
+<ResponseField name="round" type="Round | null" required>
+  The active round if one is in progress, or `null` if no round is active.
+</ResponseField>
+
+---
+
+## BalanceResponse
+
+Used internally by the client's idle balance refresh mechanism. Represents a balance response from the `/wallet/balance` endpoint.
+
+```typescript
+type BalanceResponse = {
+  balance: Balance;
+};
+```
+
+<ResponseField name="balance" type="Balance" required>
+  The player's current balance. See [`Balance`](#balance).
+</ResponseField>
+
+---
+
+## PlayParameters
+
+The parameters passed to the [`play`](/api/play) method.
+
+```typescript
+type PlayParameters = {
+  amount: number;
+  mode: string;
+};
+```
+
+<ParamField path="amount" type="number" required>
+  The bet amount as a raw RGS integer (e.g. `1_000_000` for 1 unit). Must be within the `minBet` / `maxBet` range from [`AuthenticateConfig`](#authenticateconfig).
+</ParamField>
+
+<ParamField path="mode" type="string" required>
+  The game mode to play (e.g. `"base"`). Game-specific.
+</ParamField>
+
+---
+
+## PlayResponse
+
+Returned by the [`play`](/api/play) method.
+
+```typescript
+type PlayResponse = {
+  balance: Balance;
+  round: Round;
+};
+```
+
+<ResponseField name="balance" type="Balance" required>
+  The player's updated balance after the bet is placed. See [`Balance`](#balance).
+</ResponseField>
+
+<ResponseField name="round" type="Round" required>
+  The round that was just started. See [`Round`](#round).
+</ResponseField>
+
+---
+
+## EndRoundResponse
+
+Returned by the [`endRound`](/api/end-round) method.
+
+```typescript
+type EndRoundResponse = {
+  balance: Balance;
+};
+```
+
+<ResponseField name="balance" type="Balance" required>
+  The player's updated balance after the round is settled. See [`Balance`](#balance).
+</ResponseField>
+
+---
+
+## EventResponse
+
+Returned by the [`event`](/api/event) method.
+
+```typescript
+type EventResponse = {
+  event: string;
+};
+```
+
+<ResponseField name="event" type="string" required>
+  The event identifier that was processed.
+</ResponseField>

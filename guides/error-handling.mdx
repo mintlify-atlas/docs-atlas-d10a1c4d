@@ -1,0 +1,177 @@
+---
+title: "Error Handling"
+description: "How to handle errors from the Stake Engine client methods."
+---
+
+All client methods are `async` and throw an `Error` on failure. Wrap every call in a `try/catch` block. This page covers the full set of errors the client can throw and how to handle them.
+
+## Initialization errors
+
+`RGSClient` is a synchronous factory function. It throws immediately if required URL parameters are missing or invalid. Wrap the construction call in a `try/catch`.
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+let client;
+try {
+  client = RGSClient({ url: window.location.href });
+} catch (err) {
+  console.error('Failed to initialize client:', err.message);
+  // Show a "game unavailable" screen
+}
+```
+
+| Error message | Cause |
+|---------------|-------|
+| `sessionID is not in set in url parameters` | The `sessionID` query parameter is missing from the page URL. |
+| `rgs_url is not in set in url parameters` | The `rgs_url` query parameter is missing from the page URL. |
+| `Unsupported device type: X` | The `device` query parameter is present but is not `desktop` or `mobile`. |
+
+<Warning>
+  Both `sessionID` and `rgs_url` are provided by the operator launch URL. If either is missing, the game cannot start. Show the player an appropriate error screen rather than letting the client throw uncaught.
+</Warning>
+
+## Runtime errors
+
+Async methods (`Authenticate`, `Play`, `EndRound`, `Event`) throw when called in an invalid state or when the API returns a non-2xx response.
+
+### Authentication check
+
+`Play`, `EndRound`, and `Event` all require a successful `Authenticate()` call first. If you call them before authenticating, the client throws synchronously before making any network request.
+
+| Error message | Cause |
+|---------------|-------|
+| `Client is not authenticated, please call Authenticate()` | `Play()`, `EndRound()`, or `Event()` was called before `Authenticate()` completed successfully. |
+
+### Round lifecycle errors
+
+| Error message | Cause |
+|---------------|-------|
+| `A round is already active, please call EndRound() before starting a new round` | `Play()` was called while a previous round is still active. Always await `EndRound()` before calling `Play()` again. |
+
+<Warning>
+  The `roundActive` state is tracked inside the client. If a `Play()` call fails mid-request, the client resets `roundActive` to `false`. Do not attempt to manage this state manually.
+</Warning>
+
+### Bet validation errors
+
+The client validates the bet amount before sending the request. These errors throw before any network call is made.
+
+| Error message | Cause |
+|---------------|-------|
+| `Bet amount must be a multiple of X` | The `amount` passed to `Play()` is not divisible by `authenticateConfig.stepBet`. |
+| `Bet amount must between min bet (X) and max bet (X)` | The `amount` is outside the operator-configured min/max range. |
+| `Bet amount must be one of the following levels: X, Y, Z. You may disable bet level enforcement...` | The `amount` is not in the `betLevels` array. Only thrown when `enforceBetLevels` is `true` (the default). |
+
+To disable bet level enforcement, pass `enforceBetLevels: false` when creating the client:
+
+```typescript
+const client = RGSClient({
+  url: window.location.href,
+  enforceBetLevels: false, // allows any valid amount within min/max
+});
+```
+
+## Network errors
+
+The client uses the browser `fetch` API. Network failures (offline, DNS failure, timeout) cause `fetch` to throw a `TypeError`. These are distinct from API errors and are not wrapped by the client.
+
+```typescript
+try {
+  await client.Play({ amount: 1_000_000, mode: 'normal' });
+} catch (err) {
+  if (err instanceof TypeError) {
+    // Network failure — fetch itself threw
+    console.error('Network error:', err.message);
+  } else {
+    // API or validation error
+    console.error('API error:', err.message);
+  }
+}
+```
+
+## API errors
+
+When the API returns a non-2xx HTTP status, the client throws with the response body as the error message. This covers server-side rejections such as an invalid session, insufficient balance, or internal errors.
+
+```typescript
+try {
+  await client.Authenticate();
+} catch (err) {
+  // err.message contains the raw API response body
+  console.error('API returned an error:', err.message);
+}
+```
+
+## Comprehensive error handling example
+
+The following pattern handles all error categories in one place:
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+// 1. Initialization — wrap in try/catch, show error UI on failure
+let client;
+try {
+  client = RGSClient({ url: window.location.href });
+} catch (err) {
+  showError('Game could not be loaded. Please try again.');
+  throw err; // stop execution
+}
+
+// 2. Authentication — required before any other method
+async function init() {
+  try {
+    const authData = await client.Authenticate();
+    return authData;
+  } catch (err) {
+    showError('Authentication failed. Please reload.');
+    throw err;
+  }
+}
+
+// 3. Play/EndRound — handle validation, round state, network, and API errors
+async function spin(betAmount: number) {
+  try {
+    const result = await client.Play({ amount: betAmount, mode: 'normal' });
+
+    if (result.round.active) {
+      await client.EndRound();
+    }
+  } catch (err: unknown) {
+    if (!(err instanceof Error)) {
+      showError('An unknown error occurred.');
+      return;
+    }
+
+    if (err instanceof TypeError) {
+      // fetch threw — no network
+      showError('Network error. Check your connection and try again.');
+      return;
+    }
+
+    const msg = err.message;
+
+    if (msg.includes('not authenticated')) {
+      showError('Session expired. Please reload the game.');
+    } else if (msg.includes('round is already active')) {
+      // UI should have prevented this — log for debugging
+      console.warn('Spin called with active round:', msg);
+    } else if (msg.includes('multiple of')) {
+      showError(`Invalid bet amount: ${msg}`);
+    } else if (msg.includes('must between')) {
+      showError(`Bet out of range: ${msg}`);
+    } else if (msg.includes('one of the following levels')) {
+      showError(`Invalid bet level: ${msg}`);
+    } else {
+      // API or unknown error
+      showError('Something went wrong. Please try again.');
+      console.error('Unhandled error:', msg);
+    }
+  }
+}
+```
+
+<Note>
+  The client does not expose a typed error class hierarchy — all errors are plain `Error` instances. Use `err.message` string matching to distinguish between error types, as shown above.
+</Note>

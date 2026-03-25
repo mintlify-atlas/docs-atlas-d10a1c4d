@@ -1,0 +1,171 @@
+---
+title: "Authenticate"
+description: "Authenticates the player session and retrieves balance, bet configuration, and jurisdiction flags."
+---
+
+## Signature
+
+```typescript
+client.Authenticate(): Promise<AuthenticateResponse>
+```
+
+`Authenticate` must be the first method called on a new client. It posts the `sessionID` and language to the RGS `/wallet/authenticate` endpoint, then stores the returned configuration and balance on the client for use by subsequent calls.
+
+<Warning>
+  All other client methods — `Play()`, `EndRound()`, and `Event()` — throw if `Authenticate()` has not been called first.
+</Warning>
+
+## What it does
+
+1. POSTs `{ sessionID, language }` to `/wallet/authenticate`.
+2. Stores `config` (bet levels, limits) and `jurisdictionFlags` on the client.
+3. Parses the raw balance and emits a `balanceUpdate` window event.
+4. If the server returns an active round from a previous session, emits a `roundActive` window event with `{ active: true }` and sets the internal `roundActive` flag.
+5. Returns the full `AuthenticateResponse`.
+
+## Returns
+
+<ResponseField name="balance" type="Balance" required>
+  Current player balance at the time of authentication.
+  <Expandable title="Balance properties">
+    <ResponseField name="amount" type="number" required>
+      Balance amount in RGS units (integer × 1,000,000). Use the `DisplayAmount` helper to convert to a human-readable value.
+    </ResponseField>
+    <ResponseField name="currency" type="string" required>
+      ISO 4217 currency code (e.g. `USD`, `EUR`). See [Types](/api/types) for the full list of supported currencies.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="config" type="AuthenticateConfig" required>
+  Bet configuration for the operator and jurisdiction.
+  <Expandable title="AuthenticateConfig properties">
+    <ResponseField name="minBet" type="number" required>
+      Minimum allowed bet amount in RGS units.
+    </ResponseField>
+    <ResponseField name="maxBet" type="number" required>
+      Maximum allowed bet amount in RGS units.
+    </ResponseField>
+    <ResponseField name="stepBet" type="number" required>
+      Bet amounts must be exact multiples of this value.
+    </ResponseField>
+    <ResponseField name="defaultBetLevel" type="number" required>
+      The bet level index to pre-select in the UI.
+    </ResponseField>
+    <ResponseField name="betLevels" type="number[]" required>
+      Ordered array of valid bet amounts in RGS units.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="jurisdictionFlags" type="JurisdictionFlags" required>
+  Feature flags set by the operator's jurisdiction. Use these to conditionally enable or disable game UI features.
+  <Expandable title="JurisdictionFlags properties">
+    <ResponseField name="socialCasino" type="boolean" required>
+      Game is running in social casino mode (no real-money wagering).
+    </ResponseField>
+    <ResponseField name="disabledFullscreen" type="boolean" required>
+      Hide or disable the fullscreen toggle.
+    </ResponseField>
+    <ResponseField name="disabledTurbo" type="boolean" required>
+      Hide or disable the turbo/fast-spin feature.
+    </ResponseField>
+    <ResponseField name="disabledSuperTurbo" type="boolean" required>
+      Hide or disable the super-turbo feature.
+    </ResponseField>
+    <ResponseField name="disabledAutoplay" type="boolean" required>
+      Hide or disable the autoplay feature.
+    </ResponseField>
+    <ResponseField name="disabledSlamstop" type="boolean" required>
+      Hide or disable slam-stop (early-stop) functionality.
+    </ResponseField>
+    <ResponseField name="disabledSpacebar" type="boolean" required>
+      Disable spacebar as a spin trigger.
+    </ResponseField>
+    <ResponseField name="disabledBuyFeature" type="boolean" required>
+      Hide or disable the buy-feature/bonus-buy button.
+    </ResponseField>
+    <ResponseField name="displayNetPosition" type="boolean" required>
+      Display the player's net position (win/loss) for the session.
+    </ResponseField>
+    <ResponseField name="displayRTP" type="boolean" required>
+      Display the game's return-to-player percentage.
+    </ResponseField>
+    <ResponseField name="displaySessionTimer" type="boolean" required>
+      Display a running session timer in the UI.
+    </ResponseField>
+    <ResponseField name="minimumRoundDuration" type="number" required>
+      Minimum milliseconds a round animation must last before completing.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="round" type="Round | null" required>
+  Any round that was active when the previous session ended, or `null` if none. If `round.active` is `true`, the player has an unfinished round and you should resume it before allowing new bets.
+  <Expandable title="Round properties">
+    <ResponseField name="betID" type="number" required>
+      Unique identifier for the bet.
+    </ResponseField>
+    <ResponseField name="amount" type="number">
+      Bet amount in RGS units.
+    </ResponseField>
+    <ResponseField name="payout" type="number">
+      Payout amount in RGS units.
+    </ResponseField>
+    <ResponseField name="payoutMultiplier" type="number">
+      Payout expressed as a multiplier of the bet amount.
+    </ResponseField>
+    <ResponseField name="active" type="boolean" required>
+      Whether the round is still active and requires `EndRound()` to close.
+    </ResponseField>
+    <ResponseField name="mode" type="string" required>
+      Game mode string (e.g. `base`, `freespin`, `bonus`).
+    </ResponseField>
+    <ResponseField name="event" type="string">
+      Optional event string associated with the round.
+    </ResponseField>
+    <ResponseField name="state" type="unknown">
+      Arbitrary game-specific state object. Shape is defined by the game server.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Side effects
+
+| Event | Condition |
+| --- | --- |
+| `window` emits `balanceUpdate` | Always, with the parsed `Balance` as event detail. |
+| `window` emits `roundActive` | Only when `round.active === true`, with `{ active: true }` as event detail. |
+
+## Throws
+
+Throws an `Error` if the RGS API returns a non-2xx HTTP status.
+
+## Example
+
+```typescript
+import { RGSClient } from 'stake-engine';
+
+const client = RGSClient({ url: window.location.href });
+
+const { balance, config, jurisdictionFlags, round } = await client.Authenticate();
+
+// Configure the bet selector using the returned bet levels.
+const defaultBet = config.betLevels[config.defaultBetLevel];
+console.log('Starting bet:', defaultBet);
+
+// Respect jurisdiction flags.
+if (jurisdictionFlags.disabledAutoplay) {
+  hideAutoplayButton();
+}
+
+// Resume any interrupted round from a previous session.
+if (round?.active) {
+  console.log('Resuming active round', round.betID);
+  await resumeRound(round);
+}
+```
+
+<Note>
+  Listen for `balanceUpdate` window events to keep your UI in sync with balance changes across all client methods, not just `Authenticate()`.
+</Note>

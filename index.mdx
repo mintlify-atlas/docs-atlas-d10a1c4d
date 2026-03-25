@@ -1,97 +1,83 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Stake Engine TypeScript Client"
+description: "TypeScript SDK for integrating casino game clients with the Stake Engine Remote Game Server API."
+mode: "custom"
 ---
 
-## Setting up
+<div style={{background: "#121212", minHeight: "100vh", padding: "0"}}>
 
-Get your documentation site up and running in minutes.
+<div style={{background: "linear-gradient(135deg, #121212 0%, #1a2a3a 100%)", padding: "80px 40px", textAlign: "center"}}>
+  <div style={{maxWidth: "800px", margin: "0 auto"}}>
+    <div style={{marginBottom: "24px"}}>
+      <span style={{background: "#1a2a3a", border: "1px solid #75a4dc", color: "#75a4dc", padding: "6px 16px", borderRadius: "20px", fontSize: "13px", fontWeight: "600", letterSpacing: "0.05em"}}>BETA</span>
+    </div>
+    <h1 style={{fontSize: "48px", fontWeight: "700", color: "#ffffff", lineHeight: "1.15", marginBottom: "24px", fontFamily: "Inter, sans-serif"}}>
+      Stake Engine<br /><span style={{color: "#75a4dc"}}>TypeScript Client</span>
+    </h1>
+    <p style={{fontSize: "20px", color: "#bec6d1", maxWidth: "600px", margin: "0 auto 40px", lineHeight: "1.6"}}>
+      A type-safe SDK for integrating casino game frontends with the Stake Engine Remote Game Server API.
+    </p>
+    <div style={{display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap"}}>
+      <a href="/introduction" style={{background: "#75a4dc", color: "#121212", padding: "14px 32px", borderRadius: "4px", fontWeight: "700", textDecoration: "none", fontSize: "16px"}}>Get Started</a>
+      <a href="/api/rgs-client" style={{background: "transparent", color: "#75a4dc", padding: "14px 32px", borderRadius: "4px", fontWeight: "700", textDecoration: "none", fontSize: "16px", border: "1px solid #75a4dc"}}>API Reference</a>
+    </div>
+  </div>
+</div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+<div style={{maxWidth: "1000px", margin: "0 auto", padding: "60px 40px"}}>
+  <h2 style={{fontSize: "32px", fontWeight: "700", color: "#ffffff", textAlign: "center", marginBottom: "48px"}}>Everything you need for RGS integration</h2>
+  <CardGroup cols={3}>
+    <Card title="Session Auth" icon="key" href="/api/authenticate">
+      Authenticate players and receive balance, bet config, and jurisdiction flags in a single call.
+    </Card>
+    <Card title="Round Lifecycle" icon="rotate" href="/concepts/client-lifecycle">
+      Built-in guards prevent double-bets. Manage Play and EndRound with confidence.
+    </Card>
+    <Card title="Live Balance Events" icon="bolt" href="/concepts/events">
+      Subscribe to `balanceUpdate` window events for instant, reactive UI updates.
+    </Card>
+    <Card title="Jurisdiction Flags" icon="shield" href="/concepts/jurisdiction-flags">
+      Gate features like autoplay, turbo, and buy-feature per jurisdiction automatically.
+    </Card>
+    <Card title="35+ Currencies" icon="coins" href="/guides/currencies">
+      Format amounts for USD, EUR, JPY, and dozens more with correct symbols and decimals.
+    </Card>
+    <Card title="TypeScript-first" icon="brackets-curly" href="/api/types">
+      Full type definitions for every parameter, response, and configuration object.
+    </Card>
+  </CardGroup>
+</div>
 
-## Make it yours
+<div style={{background: "#0d1a24", padding: "60px 40px"}}>
+  <div style={{maxWidth: "800px", margin: "0 auto"}}>
+    <h2 style={{fontSize: "32px", fontWeight: "700", color: "#ffffff", textAlign: "center", marginBottom: "40px"}}>Get running in minutes</h2>
 
-Design a docs site that looks great and empowers your users.
+```bash npm
+npm install stake-engine
+```
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+```typescript
+import { RGSClient } from 'stake-engine';
 
-## Create beautiful pages
+const client = RGSClient({ url: window.location.href });
 
-Everything you need to create world-class documentation.
+// Authenticate the player session
+const { balance, config, jurisdictionFlags } = await client.Authenticate();
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+// Place a bet using a valid bet level
+const result = await client.Play({
+  amount: config.betLevels[0],
+  mode: 'base',
+});
 
-## Need inspiration?
+// Complete the round when game logic resolves
+await client.EndRound();
+```
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+  <div style={{textAlign: "center", marginTop: "32px"}}>
+    <a href="/quickstart" style={{color: "#75a4dc", fontWeight: "600", textDecoration: "none", fontSize: "16px"}}>View full quickstart guide →</a>
+  </div>
+  </div>
+</div>
+
+</div>
